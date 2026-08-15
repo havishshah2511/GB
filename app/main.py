@@ -41,8 +41,25 @@ def render(name: str, **context: Any) -> HTMLResponse:
     return HTMLResponse(html)
 
 
+def _warn_about_defaults() -> None:
+    """The repo is public and the defaults are documented, so a deployment that
+    still uses them is wide open. Loud on boot rather than silent."""
+    if settings.ADMIN_PASSWORD == "admin":
+        log.warning(
+            "ADMIN_PASSWORD is still the default 'admin' — anyone can open /admin. "
+            "Set ADMIN_PASSWORD (and ADMIN_SECRET) before exposing this to the internet."
+        )
+    if settings.HOST not in ("127.0.0.1", "localhost") and not settings.PUBLIC_BASE_URL:
+        log.warning(
+            "PUBLIC_BASE_URL is unset while listening on %s — share and status links "
+            "will be built from the request host, which breaks behind a proxy.",
+            settings.HOST,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _warn_about_defaults()
     init_db()
     pricing.seed_product_slabs()
     if settings.SEED_DEMO_DATA:
