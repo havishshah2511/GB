@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f7b6c">
+<meta name="robots" content="noindex, nofollow">
+<title>My requests</title>
+<link rel="stylesheet" href="/static/chat.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+<style>
+  .mine { padding: 18px 16px 40px; }
+  .mine > h2 { font-size: 20px; margin: 0 0 4px; letter-spacing: -.02em; }
+  .mine > .who { color: var(--ink-soft); font-size: 14px; margin: 0 0 18px; }
+  .req {
+    border: 1.5px solid var(--line); border-radius: 18px; padding: 16px;
+    margin-bottom: 14px; background: var(--card);
+  }
+  .req .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .req h3 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+  .req .meta { color: var(--ink-soft); font-size: 13px; margin: 4px 0 0; }
+  .pill {
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+    padding: 5px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill.active   { background: #e4f5ef; color: #0f7b6c; }
+  .pill.expired,
+  .pill.cancelled{ background: #f1f1f1; color: #777; }
+  .pill.fulfilled{ background: #eef1ff; color: #3b4aa8; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+  .cell { background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; }
+  .cell .k { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em; }
+  .cell .v { font-size: 17px; font-weight: 800; letter-spacing: -.02em; margin-top: 2px; }
+  .cell.wide { grid-column: 1 / -1; }
+  .note { font-size: 12px; color: var(--ink-soft); margin-top: 10px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .btn {
+    display: inline-block; background: var(--brand); color: #fff; border: 0;
+    border-radius: 999px; padding: 11px 18px; font-size: 14px; font-weight: 700;
+    text-decoration: none; font-family: var(--font); cursor: pointer;
+  }
+  .btn.ghost { background: transparent; color: var(--brand); border: 1.5px solid var(--line); }
+  .empty { color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="badge">● Group buying</div>
+    <h1>Buy Together. Pay Less.</h1>
+  </header>
+  <div class="mine">
+    <h2>Your requests</h2>
+    <p class="who">{{ WHO }}</p>
+    {{ REQUESTS }}
+    <div class="actions">
+      <a class="btn" href="/">➕ Add a new request</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

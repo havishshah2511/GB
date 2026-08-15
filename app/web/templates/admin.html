@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Group Buying — Admin</title>
+<link rel="stylesheet" href="/static/admin.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+</head>
+<body>
+<header class="top">
+  <h1>Group Buying · Admin</h1>
+  <span class="pill" id="engine-pill">…</span>
+  <span class="sp"></span>
+  <span class="hint" id="updated"></span>
+  <button class="act" id="run-jobs" title="Expire due intents, queue reminders, dispatch the outbox">▶ Run jobs</button>
+  <button class="act" id="recalc-all" title="Re-aggregate every group">↻ Recalculate all</button>
+  <button class="act primary" id="refresh">Refresh</button>
+  <form method="post" action="/admin/logout" style="margin:0"><button class="act" type="submit">Sign out</button></form>
+</header>
+
+<nav class="tabs">
+  <button data-view="overview" class="on">Overview</button>
+  <button data-view="groups">Groups</button>
+  <button data-view="intents">Intents</button>
+  <button data-view="customers">Customers</button>
+  <button data-view="referrals">Referrals</button>
+  <button data-view="notifications">Notifications</button>
+  <button data-view="conversations">Conversations</button>
+  <button data-view="pricing">Pricing</button>
+</nav>
+
+<main>
+  <section class="view on" id="view-overview"></section>
+  <section class="view" id="view-groups"></section>
+  <section class="view" id="view-intents"></section>
+  <section class="view" id="view-customers"></section>
+  <section class="view" id="view-referrals"></section>
+  <section class="view" id="view-notifications"></section>
+  <section class="view" id="view-conversations"></section>
+  <section class="view" id="view-pricing"></section>
+</main>
+
+<dialog id="modal">
+  <div class="dh"><span id="modal-title">Details</span><span class="sp"></span>
+    <button class="act" onclick="document.getElementById('modal').close()">Close</button></div>
+  <div class="db" id="modal-body"></div>
+  <div class="df" id="modal-foot"></div>
+</dialog>
+
+<script>window.ADMIN_VERSION = "{{ VERSION }}";</script>
+<script src="/static/admin.js"></script>
+</body>
+</html>

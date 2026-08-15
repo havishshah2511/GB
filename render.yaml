@@ -1,0 +1,34 @@
+# One-click deploy on Render: New → Blueprint → point at this repo.
+# Everything else (Railway, Fly.io, Cloud Run) can use the Dockerfile directly.
+services:
+  - type: web
+    name: groupbuy
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # SQLite on a persistent disk. Without the disk the database resets on
+      # every deploy, which would wipe live buying groups.
+      - key: DB_PATH
+        value: /var/data/groupbuy.db
+      - key: PUBLIC_BASE_URL
+        sync: false          # set to your https://<service>.onrender.com URL
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_SECRET
+        generateValue: true
+      - key: SEED_DEMO_DATA
+        value: "0"
+      - key: ENABLE_BACKGROUND_WORKER
+        value: "1"
+      # Optional: switches the NLU from the offline rules engine to Claude.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+    disk:
+      name: groupbuy-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin sign in</title>
+<link rel="stylesheet" href="/static/admin.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<style>
+  body { display: grid; place-items: center; min-height: 100vh; }
+  .box {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px; width: min(380px, calc(100% - 32px));
+  }
+  .box h1 { margin: 0 0 4px; font-size: 19px; letter-spacing: -.01em; }
+  .box p.sub { margin: 0 0 18px; color: var(--ink-soft); font-size: 13px; }
+  .box label { display: block; font-size: 12px; font-weight: 700; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 5px; }
+  .box input { width: 100%; padding: 10px 12px; font-size: 15px; }
+  .box button {
+    width: 100%; margin-top: 18px; padding: 11px; border: 0; border-radius: 8px;
+    background: var(--brand); color: #fff; font-size: 15px; font-weight: 700;
+    cursor: pointer; font-family: var(--font);
+  }
+  .err { color: var(--danger); background: var(--danger-soft); padding: 9px 12px;
+         border-radius: 8px; font-size: 13px; margin: 0 0 4px; }
+</style>
+</head>
+<body>
+  <form class="box" method="post" action="/admin/login">
+    <h1>Group Buying · Admin</h1>
+    <p class="sub">Sign in to manage groups, intents and pricing.</p>
+    {{ ERROR }}
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</body>
+</html>
