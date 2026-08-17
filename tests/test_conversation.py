@@ -144,12 +144,18 @@ def test_conversation_survives_a_reload(chat):
     assert any(m.get("role") == "user" for m in resumed["messages"])
 
 
-def test_restart_clears_the_slot_bag(chat):
+def test_restart_clears_the_requirement_but_keeps_the_customer(chat):
+    """Restarting drops what they're buying, not who they are -- making someone
+    retype their own number is the fastest way to lose them."""
     chat("s9", "")
     chat("s9", "I need 3 AC in Ahmedabad")
+    chat("s9", "9876500009")
     reply = chat("s9", "start over")
+
+    assert reply["question"]["slot"] == "category"
     assert reply["summary"]["quantity"] is None
-    assert reply["summary"]["city"] is None
+    assert reply["summary"]["category"] is None
+    assert reply["summary"]["mobile"] == "9876500009"
 
 
 def test_optional_questions_are_dropped_after_two_unhelpful_answers(chat):

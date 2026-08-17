@@ -81,10 +81,18 @@ def test_full_group_buying_loop(chat):
     assert "9811110001" in recipients and "9811110003" in recipients
     assert "9811110004" not in recipients, "the joiner should not be messaged"
 
-    message = drops[-1]["message"]
-    assert "Price Drop Alert" in message
-    assert "₹35,500" in message
-    assert "/join/" in message                          # every message re-offers sharing
+    # The pool crossed two thresholds on the way here (8→18 hit ₹37,000, then
+    # 20→23 hit ₹35,500), so assert against the most recent drop specifically.
+    # history() is newest-first and tie-breaks on id, so drops[0] is stable.
+    latest = drops[0]["message"]
+    assert "Price Drop Alert" in latest
+    assert "₹35,500" in latest
+    assert "/join/" in latest                           # every message re-offers sharing
+
+    # Every active member hears about a price drop -- including someone who was
+    # already messaged about the earlier one. Price drops bypass the daily cap.
+    dropped_to = {n["customer_mobile"] for n in drops if "₹35,500" in n["message"]}
+    assert {"9811110001", "9811110002", "9811110003"} <= dropped_to
 
     # --- 7. the outbox actually delivers ------------------------------------
     result = notifications.dispatch()

@@ -12,6 +12,8 @@
   --accent-soft: #fdf0e4;
   --danger: #c0392b;
   --danger-soft: #fdeceb;
+  --wash-1: rgba(15, 123, 108, .13);
+  --wash-2: rgba(217, 119, 43, .10);
   --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -24,13 +26,23 @@
     --brand: #35b39c; --brand-soft: #14312c;
     --accent: #e8964f; --accent-soft: #2d2318;
     --danger: #e57368; --danger-soft: #33201e;
+    --wash-1: rgba(53, 179, 156, .13);
+    --wash-2: rgba(232, 150, 79, .09);
   }
 }
 
 * { box-sizing: border-box; }
 body {
-  margin: 0; background: var(--bg); color: var(--ink);
+  margin: 0; color: var(--ink);
   font-family: var(--font); font-size: 14px; line-height: 1.5;
+  /* Layered wash: two soft brand/accent blooms over the flat base, fixed so
+     the page scrolls against a calm background rather than a moving gradient. */
+  background:
+    radial-gradient(1100px 620px at 8% -8%, var(--wash-1), transparent 62%),
+    radial-gradient(880px 520px at 102% 4%, var(--wash-2), transparent 58%),
+    var(--bg);
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 a { color: var(--brand); }
 
@@ -86,6 +98,38 @@ h2:first-child { margin-top: 0; }
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 .panel > header .sp { flex: 1; }
+
+/* ---------------- product-wise demand board ---------------- */
+.panel.prod { box-shadow: 0 1px 2px rgba(20, 24, 31, .04), 0 10px 28px rgba(20, 24, 31, .05); }
+.panel.prod > header { font-size: 15px; letter-spacing: -.01em; }
+.panel.prod > header .pemoji { font-size: 17px; }
+
+.prodstats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  /* Separators are drawn on the tiles, not as grid gaps -- a gap-coloured
+     background would leave a grey block wherever the last row is short. */
+  background: var(--surface);
+}
+.pstat {
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.pstat .k {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-soft); font-weight: 700;
+}
+.pstat .v {
+  font-size: 21px; font-weight: 800; letter-spacing: -.025em;
+  margin-top: 3px; font-variant-numeric: tabular-nums;
+}
+.pstat .n { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+.pstat.good .v { color: var(--brand); }
+.pstat.accent { background: var(--accent-soft); }
+.pstat.accent .v { color: var(--accent); }
+
+td .pending { font-size: 16px; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }

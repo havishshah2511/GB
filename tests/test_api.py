@@ -185,6 +185,41 @@ def test_admin_overview_aggregates_demand(client):
     assert data["engine"]["llm_enabled"] is False
 
 
+def test_demand_by_product_reports_quantity_pending_to_close_a_price(client):
+    """The back office has to answer 'how much more do we need?' per product."""
+    create_intent(client, mobile="9876543230", quantity=4)      # AC, Ahmedabad
+    create_intent(client, mobile="9876543231", city="Mumbai", quantity=2)
+
+    products = client.get("/api/admin/demand-by-product").json()["products"]
+    by_key = {p["category"]: p for p in products}
+
+    assert "AC" in by_key and "RICE" in by_key, "every category is listed, even empty ones"
+    ac = by_key["AC"]
+    assert ac["groups"] == 2
+    assert ac["customers"] == 2
+    assert ac["total_qty"] == 6
+    assert ac["strong_qty"] == 6
+
+    # 4 units sits in the 1-5 slab (next at 6, so 2 to go); 2 units needs 4 more.
+    gaps = {row["code"]: row["pending_qty"] for row in ac["group_rows"]}
+    assert sorted(gaps.values()) == [2, 4]
+    assert ac["pending_qty"] == 6, "product-level pending is the sum of its groups"
+
+    # Untouched category reports zeroes rather than being absent.
+    assert by_key["RICE"]["groups"] == 0
+    assert by_key["RICE"]["pending_qty"] == 0
+
+    # Closest-to-closing group is listed first so an operator sees it at a glance.
+    assert ac["group_rows"][0]["pending_qty"] == 2
+
+
+def test_demand_by_product_is_empty_on_a_fresh_install(client):
+    """No demo rows may ever appear in the back office."""
+    products = client.get("/api/admin/demand-by-product").json()["products"]
+    assert all(p["groups"] == 0 and p["total_qty"] == 0 for p in products)
+    assert client.get("/api/admin/overview").json()["customers"] == 0
+
+
 def test_admin_can_edit_slabs_and_reprice(client):
     created = create_intent(client, quantity=12)
     code = created["group"]["code"]

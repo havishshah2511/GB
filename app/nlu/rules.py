@@ -74,8 +74,38 @@ READY_PATTERNS = re.compile(
     r"i want to buy at|deal|proceed with (the )?order)",
     re.I,
 )
-RESTART_PATTERNS = re.compile(r"\b(restart|start over|reset|new requirement|change product)\b", re.I)
-STOP_PATTERNS = re.compile(r"\b(stop|cancel|not interested|no longer|remove me)\b", re.I)
+RESTART_PATTERNS = re.compile(r"\b(restart|start over|start again|reset|new requirement)\b", re.I)
+STOP_PATTERNS = re.compile(r"\b(stop|not interested|no longer|remove me)\b", re.I)
+
+#: Commands the customer may issue at ANY point in the conversation. They are
+#: checked before slot extraction, so "cancel my request" can never be mistaken
+#: for an answer to "Split or Window?".
+CANCEL_PATTERNS = re.compile(
+    r"\b(cancel|delete|drop|withdraw|remove)\b[^.?!]{0,24}\b(request|order|requirement|intent|it|this|me)\b"
+    r"|\bcancel\b(?!\s*(the\s*)?(link|share))"
+    r"|\bnot interested\b|\bno longer (required|interested|needed)\b|\bremove me\b",
+    re.I,
+)
+SHOW_PAST_PATTERNS = re.compile(
+    r"\b(show|see|view|check|open|display|what('?s| is)|track)\b[^.?!]{0,28}"
+    r"\b(my|previous|past|old|earlier|existing)\b[^.?!]{0,18}"
+    r"\b(request|order|requirement|status|booking)s?\b"
+    r"|\b(my|past|old|previous|existing|earlier)\s+(request|order|requirement|booking)s?\b"
+    r"|\b(request|order)\s+status\b|\bstatus of my\b",
+    re.I,
+)
+CHANGE_PRODUCT_PATTERNS = re.compile(
+    r"\bchange\b[^.?!]{0,20}\b(product|item|category|requirement|my mind)\b"
+    r"|\b(different|another|other)\s+(product|item|thing|category)\b"
+    r"|\bswitch\b[^.?!]{0,16}\b(product|to)\b"
+    r"|\bsomething else\b|\bwrong product\b|\bnot (this|that) (product|one)\b",
+    re.I,
+)
+EXIT_PATTERNS = re.compile(
+    r"\b(exit|quit|bye|goodbye|leave|log ?out|close (the )?chat|end (the )?chat)\b"
+    r"|\b(i'?m|i am) done\b|\bthat'?s (all|it)\b|\bnothing else\b|\bno thanks\b",
+    re.I,
+)
 
 _QTY_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
@@ -313,15 +343,37 @@ def match_choice(text: str, slot: catalog.Slot) -> str | None:
 # --------------------------------------------------------------------------- #
 # message-level intent
 # --------------------------------------------------------------------------- #
-def detect_message_intent(text: str) -> str | None:
+def detect_command(text: str) -> str | None:
+    """A steering instruction rather than an answer to the current question.
+
+    Order matters: "cancel my current request" must read as a cancellation, not
+    as a request to view requests.
+    """
+    if not text or not text.strip():
+        return None
+    if CANCEL_PATTERNS.search(text):
+        return "cancel"
+    if SHOW_PAST_PATTERNS.search(text):
+        return "show_past"
+    if CHANGE_PRODUCT_PATTERNS.search(text):
+        return "change_product"
     if RESTART_PATTERNS.search(text):
         return "restart"
+    if EXIT_PATTERNS.search(text):
+        return "exit"
+    return None
+
+
+def detect_message_intent(text: str) -> str | None:
+    command = detect_command(text)
+    if command:
+        return command
     if READY_PATTERNS.search(text):
         return "ready_to_buy"
     if HELP_PATTERNS.search(text):
         return "explain"
     if STOP_PATTERNS.search(text):
-        return "stop"
+        return "cancel"
     if SHARE_PATTERNS.search(text) and len(text.split()) <= 6:
         return "share"
     return None

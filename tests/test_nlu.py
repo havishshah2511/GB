@@ -96,7 +96,10 @@ def test_message_intents():
     assert rules.detect_message_intent("how does this work?") == "explain"
     assert rules.detect_message_intent("I am ready to buy") == "ready_to_buy"
     assert rules.detect_message_intent("start over") == "restart"
-    assert rules.detect_message_intent("no longer required") == "stop"
+    # "stop"-style phrasings resolve to the cancel command, which the
+    # conversation engine acts on at any stage (see test_commands.py).
+    assert rules.detect_message_intent("no longer required") == "cancel"
+    assert rules.detect_message_intent("show me my old request") == "show_past"
 
 
 def test_wait_flexibility():

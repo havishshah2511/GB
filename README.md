@@ -32,12 +32,12 @@ python run.py
 | `http://127.0.0.1:8000/docs` | Interactive OpenAPI reference |
 | `http://127.0.0.1:8000/health` | Liveness + which NLU engine is active |
 
-First boot seeds ten demo intents so the dashboard and the price ladder are
-immediately visible (`SEED_DEMO_DATA=0` to skip). No database server, no build
-step, no API key required.
+The database starts **empty** — the back office only ever shows real customer
+demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows to
+look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 128 tests
+python -m pytest        # 174 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -124,8 +124,23 @@ then continues from split/window onward.
   repeated.
 - **Every visit is a fresh chat.** Opening the site never replays an old
   conversation; continuity comes from the mobile number, not from browser state.
-- **Off-script messages** (`how does this work?`, `share`, `I'm ready to buy`,
-  `start over`, `no longer required`) are handled without losing the thread.
+
+### Commands work at any point
+
+Steering instructions are matched **before** slot extraction, so they can never
+be mistaken for an answer to the question on screen. Asking to cancel while the
+bot is asking "Split or Window?" cancels — it does not get read as a spec.
+
+| Say | What happens |
+| --- | --- |
+| "cancel my request", "no longer required" | cancels the saved request and drops its quantity from the group; asks which one when there are several. Nothing saved yet → says so and offers a fresh start |
+| "show me my old request", "order status" | lists their requests and hands over the `/my/{token}` link, texting it too. Asks for the number first if we don't know them yet |
+| "change product", "something else" | keeps name and mobile, drops the product, starts again |
+| "exit", "bye", "that's all" | closes warmly; reassures them their group keeps working if a request is live |
+| "how does this work?", "share", "I'm ready to buy" | answered without losing the thread |
+
+Any missed answer also surfaces **Change product / My requests / Cancel** chips,
+so the customer always has a way out instead of a repeated question.
 
 ### Returning buyers
 
@@ -318,7 +333,8 @@ GET  /join/{groupCode}?ref={code}
 Admin (session cookie or HTTP Basic):
 
 ```
-GET  /api/admin/overview            GET  /api/admin/expiring
+GET  /api/admin/overview            GET  /api/admin/demand-by-product
+GET  /api/admin/expiring
 GET  /api/admin/groups              GET  /api/admin/groups/{id}
 PUT  /api/admin/groups/{id}/slabs   POST /api/admin/groups/{id}/supplier-price
 POST /api/admin/groups/{id}/status  POST /api/admin/groups/{id}/notify
@@ -346,9 +362,15 @@ strength, plus expiring intents), groups, intents, customers, referrals,
 notification outbox, conversations and pricing templates.
 
 **Groups are presented per product** — one panel per category, each headed with
-that product's totals (groups, customers, total demand, strong demand, confirmed),
-because demand is read per product first and two different products are never
-comparable side by side.
+that product's totals: groups, customers, total demand, strong demand, confirmed,
+and **quantity pending to close the next price level**. Two different products
+are never comparable side by side, so they never share a table.
+
+"Pending" is the operator's headline number: how much more quantity would unlock
+a cheaper slab. It appears per group (sorted closest-to-closing first) and summed
+per product, with groups already on their cheapest slab marked *best price* and
+excluded from the total. `GET /api/admin/demand-by-product` returns the same
+figures for reporting.
 
 Operators can view any chat transcript beside the AI's extracted fields, correct
 an extraction and re-run matching, move an intent between groups, merge or split
@@ -392,6 +414,7 @@ tests/test_nlu.py            extraction, units, dates, typos, no re-asking
 tests/test_matching.py       exact vs flexible, momentum, windows, expiry
 tests/test_conversation.py   question order, mobile-first, loop guards, resume
 tests/test_returning_customer.py  recognition, status page, live merge updates
+tests/test_commands.py       cancel / show-past / change-product / exit, mid-flow
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations
 tests/test_end_to_end.py     the full loop, asserted against the spec's numbers

@@ -89,7 +89,9 @@ class Settings:
 
     # --- misc ---
     CURRENCY_SYMBOL: str = os.getenv("CURRENCY_SYMBOL", "₹")
-    SEED_DEMO_DATA: bool = _bool("SEED_DEMO_DATA", True)
+    # Off by default: the back office must only ever show real customer demand.
+    # Set SEED_DEMO_DATA=1 on a throwaway database if you want the sample rows.
+    SEED_DEMO_DATA: bool = _bool("SEED_DEMO_DATA", False)
 
     def base_url(self, request_base: str = "") -> str:
         """Public URL used when building share links."""

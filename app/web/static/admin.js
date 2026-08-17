@@ -181,9 +181,12 @@
         <td class="num">${money(p.current_price)}
             ${p.price_status === "supplier_confirmed" ? '<span class="tag ok">confirmed</span>' : ""}</td>
         <td class="num">${p.next_slab_qty ? num(p.next_slab_qty) + " → " + money(p.next_price) : "top slab"}</td>
+        <td class="num">${g.gap_to_next_price != null
+          ? `<strong class="pending">${num(g.gap_to_next_price)}</strong>
+             <div class="hint">${esc(q.unit === "kg" ? "kg" : "units")} to go</div>`
+          : '<span class="tag ok">best price</span>'}</td>
         <td style="min-width:140px">
           ${progressBar(q.strong_intent_qty, p.current_slab_min_qty || 0, p.next_slab_qty, true)}
-          <div class="hint">${g.gap_to_next_price != null ? "gap " + num(g.gap_to_next_price) : "—"}</div>
         </td>
         <td class="mono">${esc(g.purchase_window.label)}</td>
         <td class="num">${num(g.referral_quantity)}</td>
@@ -207,39 +210,62 @@
     });
 
     const sum = (list, fn) => list.reduce((t, g) => t + (Number(fn(g)) || 0), 0);
+    const qty = (v, unit) => `${num(v)}${unit === "kg" ? " kg" : ""}`;
 
     const sections = [...byCategory.entries()].map(([key, bucket]) => {
       const list = bucket.groups;
-      const unit = bucket.unit === "kg" ? "kg" : "";
-      const totals = [
-        `${list.length} group${list.length === 1 ? "" : "s"}`,
-        `${num(sum(list, (g) => g.customers))} customers`,
-        `${num(sum(list, (g) => g.quantity.total_intent_qty))} ${unit} total demand`.trim(),
-        `${num(sum(list, (g) => g.quantity.strong_intent_qty))} ${unit} strong`.trim(),
-        `${num(sum(list, (g) => g.quantity.confirmed_qty))} ${unit} confirmed`.trim(),
-      ].join(" · ");
+      const u = bucket.unit;
+      // How much more quantity would close the next price level across this
+      // product. Groups already on their cheapest slab contribute nothing.
+      const open = list.filter((g) => g.gap_to_next_price != null);
+      const pending = sum(open, (g) => g.gap_to_next_price);
+      const atTop = list.length - open.length;
 
-      return `<div class="panel" data-category="${esc(key)}">
-        <header>${esc(bucket.emoji)} ${esc(bucket.label)}<span class="sp"></span>
-          <span class="hint">${totals}</span></header>
+      const stats = `
+        <div class="prodstats">
+          ${stat("Groups", num(list.length))}
+          ${stat("Customers", num(sum(list, (g) => g.customers)))}
+          ${stat("Total demand", qty(sum(list, (g) => g.quantity.total_intent_qty), u))}
+          ${stat("Strong demand", qty(sum(list, (g) => g.quantity.strong_intent_qty), u), "good")}
+          ${stat("Confirmed", qty(sum(list, (g) => g.quantity.confirmed_qty), u))}
+          ${stat("Pending to close next price", open.length ? qty(pending, u) : "—",
+                 open.length ? "accent" : "", atTop ? `${atTop} at best price` : "")}
+        </div>`;
+
+      return `<div class="panel prod" data-category="${esc(key)}">
+        <header><span class="pemoji">${esc(bucket.emoji)}</span> ${esc(bucket.label)}
+          <span class="sp"></span>
+          <span class="hint">${num(list.length)} group${list.length === 1 ? "" : "s"}</span>
+        </header>
+        ${stats}
         ${table(["Group", "Mode", { label: "Customers", num: 1 }, { label: "Total qty", num: 1 },
                  { label: "Strong qty", num: 1 }, { label: "Confirmed", num: 1 }, { label: "Price", num: 1 },
-                 { label: "Next target", num: 1 }, "Progress", "Window", { label: "Referral qty", num: 1 }],
+                 { label: "Next target", num: 1 }, { label: "Pending", num: 1 }, "Progress", "Window",
+                 { label: "Referral qty", num: 1 }],
                 list.map(groupRow), "No groups in this product yet.")}
       </div>`;
     });
 
     root.innerHTML = `
       <div class="toolbar">
-        <span class="hint">Grouped by product. Click a group code to open customers, pricing slabs,
+        <span class="hint">Product-wise demand. <strong>Pending</strong> is how much more quantity
+          is needed to close the next price level. Click a group code to open customers, slabs,
           merge/split and messaging.</span>
         <span class="sp" style="flex:1"></span>
         <button class="act" id="merge-open">Merge groups</button>
       </div>
       ${sections.join("") || `<div class="panel"><header>Buying groups</header>
-        <p class="empty">No groups yet — the first purchase intent creates one.</p></div>`}`;
+        <div class="empty">No groups yet — the first customer requirement creates one.</div></div>`}`;
 
     $("#merge-open")?.addEventListener("click", openMergeDialog);
+  }
+
+  function stat(label, value, tone = "", note = "") {
+    return `<div class="pstat ${tone}">
+      <div class="k">${esc(label)}</div>
+      <div class="v">${value}</div>
+      ${note ? `<div class="n">${esc(note)}</div>` : ""}
+    </div>`;
   }
 
   async function openGroup(code) {

@@ -87,7 +87,14 @@ def queue(
     channel = channel or settings.NOTIFY_DEFAULT_CHANNEL
     if dedupe_key and query_one("SELECT id FROM notifications WHERE dedupe_key = ?", (dedupe_key,)):
         return None
-    if customer_id and group_id and kind != "admin_broadcast" and _over_rate_limit(customer_id, group_id):
+    # A price drop is the payoff of the whole model and section 19 says every
+    # active member hears about it -- it must not be silently rate-limited away.
+    # `dedupe_key` still guarantees one message per member per slab.
+    if (
+        customer_id and group_id
+        and kind not in ("admin_broadcast", "price_drop")
+        and _over_rate_limit(customer_id, group_id)
+    ):
         log.debug("rate limited: %s / %s / %s", customer_id, group_id, kind)
         return None
 
@@ -165,7 +172,9 @@ def history(group_id: str | None = None, customer_id: str | None = None,
     if customer_id:
         sql += " AND n.customer_id = ?"
         params.append(customer_id)
-    sql += " ORDER BY n.created_at DESC LIMIT ?"
+    # `created_at` is second-granular, so several notifications from one
+    # recalculation tie. Break on id to keep paging stable.
+    sql += " ORDER BY n.created_at DESC, n.id DESC LIMIT ?"
     params.append(limit)
     return [dict(r) for r in query(sql, params)]
 

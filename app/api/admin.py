@@ -176,6 +176,68 @@ def overview() -> dict[str, Any]:
     }
 
 
+@router.get("/demand-by-product")
+def demand_by_product() -> dict[str, Any]:
+    """Product-wise demand and, for each product, how much more quantity is
+    needed to close the next price level."""
+    products: dict[str, dict[str, Any]] = {}
+
+    for category in catalog.all_categories():
+        products[category.key] = {
+            "category": category.key,
+            "label": category.label,
+            "emoji": category.emoji,
+            "unit": category.unit,
+            "groups": 0,
+            "customers": 0,
+            "total_qty": 0.0,
+            "strong_qty": 0.0,
+            "confirmed_qty": 0.0,
+            "pending_qty": 0.0,      # units still needed to unlock a better price
+            "at_top_slab": 0,        # groups with no cheaper level left
+            "group_rows": [],
+        }
+
+    for group in groups.list_groups():
+        summary = groups.summary_for_admin(group)
+        bucket = products.get(group["product_category"])
+        if bucket is None:
+            continue
+        gap = summary.get("gap_to_next_price")
+        bucket["groups"] += 1
+        bucket["customers"] += int(summary.get("customers") or 0)
+        bucket["total_qty"] += float(summary["quantity"]["total_intent_qty"] or 0)
+        bucket["strong_qty"] += float(summary["quantity"]["strong_intent_qty"] or 0)
+        bucket["confirmed_qty"] += float(summary["quantity"]["confirmed_qty"] or 0)
+        if gap is None:
+            bucket["at_top_slab"] += 1
+        else:
+            bucket["pending_qty"] += float(gap)
+        bucket["group_rows"].append(
+            {
+                "code": group["code"],
+                "label": summary["label"],
+                "city": group["city"],
+                "customers": summary.get("customers"),
+                "strong_qty": summary["quantity"]["strong_intent_qty"],
+                "current_price": summary["pricing"]["current_price"],
+                "next_target_qty": summary["pricing"]["next_slab_qty"],
+                "next_price": summary["pricing"]["next_price"],
+                "pending_qty": gap,
+                "price_status": summary["pricing"]["price_status"],
+                "window": summary["purchase_window"]["label"],
+            }
+        )
+
+    for bucket in products.values():
+        bucket["group_rows"].sort(
+            key=lambda r: (r["pending_qty"] is None, r["pending_qty"] or 0)
+        )
+
+    ordered = sorted(products.values(), key=lambda p: (-p["total_qty"], p["label"]))
+    return {"products": ordered}
+
+
 @router.get("/expiring")
 def expiring_intents(days: int | None = None) -> dict[str, Any]:
     horizon = today() + timedelta(days=days if days is not None else settings.RECONFIRM_LEAD_DAYS)

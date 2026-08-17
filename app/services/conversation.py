@@ -337,6 +337,257 @@ def contact_question(state: dict[str, Any]) -> Question | None:
 
 
 # --------------------------------------------------------------------------- #
+# always-available commands
+# --------------------------------------------------------------------------- #
+#: Slots whose answer could plausibly *be* a command word, where a one-word
+#: reply should be taken at face value instead ("Bye" as a name, say).
+_LITERAL_SLOTS = ("name", "area", "city")
+
+
+def detect_command(text: str, expecting: str | None) -> str | None:
+    if expecting in _LITERAL_SLOTS and len(text.split()) <= 1:
+        return None
+    return nlu.rules.detect_command(text)
+
+
+def _active_requests(state: dict[str, Any]) -> list[dict[str, Any]]:
+    customer_id = state.get("_customer_id")
+    if not customer_id:
+        return []
+    return intents.list_by_customer(customer_id, active_only=True)
+
+
+def _reset_requirement(state: dict[str, Any]) -> dict[str, Any]:
+    """Drop the product-specific answers, keep who the customer is."""
+    keep = {"name", "mobile", "city", "area", "_customer_id", "_returning_checked"}
+    return {k: v for k, v in state.items() if k in keep}
+
+
+def _cancel(state: dict[str, Any], base_url: str) -> dict[str, Any]:
+    """Cancel a saved request, or abandon one that was still being collected."""
+    active = _active_requests(state)
+    session_intent = state.get("_intent_id")
+
+    if session_intent and any(r["id"] == session_intent for r in active):
+        record = next(r for r in active if r["id"] == session_intent)
+        intents.set_status(session_intent, "cancelled")
+        return {
+            "messages": [
+                {
+                    "role": "bot",
+                    "text": (
+                        f"Done — I've cancelled **{intents.summarise_for_customer(record)}** "
+                        f"and taken it out of the group. 👍\n\n"
+                        f"No hard feelings — you can start a new request whenever you like, and "
+                        f"the group price keeps improving in the meantime."
+                    ),
+                }
+            ],
+            "state": _reset_requirement(state),
+            "question": Question(
+                slot="category",
+                text="Anything else I can help you pool up?",
+                chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()]
+                + [_chip("No thanks", "exit")],
+            ),
+        }
+
+    if len(active) == 1:
+        record = active[0]
+        intents.set_status(record["id"], "cancelled")
+        return {
+            "messages": [
+                {
+                    "role": "bot",
+                    "text": (
+                        f"Cancelled ✅ **{intents.summarise_for_customer(record)}** is out of "
+                        f"the group now.\n\nYou're welcome back any time — pooling only works "
+                        f"because people like you keep coming back."
+                    ),
+                }
+            ],
+            "state": _reset_requirement(state),
+            "question": Question(
+                slot="category",
+                text="Want to set up something new?",
+                chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()]
+                + [_chip("No thanks", "exit")],
+            ),
+        }
+
+    if len(active) > 1:
+        chips = [
+            _chip(intents.summarise_for_customer(r), f"cancel {r['id']}") for r in active[:5]
+        ]
+        chips.append(_chip("Keep them all", "keep"))
+        return {
+            "messages": [{"role": "bot", "text": "Sure — which one should I cancel?"}],
+            "state": state,
+            "question": Question(slot="_cancel_choice", text="", chips=chips),
+        }
+
+    # Nothing saved yet -- they are cancelling a half-finished conversation.
+    return {
+        "messages": [
+            {
+                "role": "bot",
+                "text": (
+                    "No problem — I hadn't saved anything yet, so there's nothing to cancel. 👍\n\n"
+                    "Whenever you're ready, tell me what you're planning to buy and I'll find "
+                    "you a group."
+                ),
+            }
+        ],
+        "state": _reset_requirement(state),
+        "question": Question(
+            slot="category",
+            text="",
+            chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
+            placeholder="e.g. “I need 2 AC”",
+        ),
+    }
+
+
+def _show_past(state: dict[str, Any], base_url: str) -> dict[str, Any]:
+    from . import customers
+
+    customer_id = state.get("_customer_id")
+    # They may have given their number earlier in this chat without a customer
+    # record existing yet -- resolve it rather than asking twice.
+    if not customer_id and state.get("mobile"):
+        known = customers.by_mobile(state["mobile"])
+        if known:
+            customer_id = known["id"]
+            state["_customer_id"] = customer_id
+        else:
+            return {
+                "messages": [
+                    {
+                        "role": "bot",
+                        "text": (
+                            f"I don't have anything saved against {state['mobile']} yet — "
+                            f"this'll be your first one. Let's get it set up 🙂"
+                        ),
+                    }
+                ],
+                "state": state,
+                "question": next_question(state),
+            }
+
+    if not customer_id:
+        # We don't know who they are yet -- ask, then come straight back here.
+        state["_pending_command"] = "show_past"
+        return {
+            "messages": [
+                {"role": "bot", "text": "Happy to pull those up 👍"}
+            ],
+            "state": state,
+            "question": Question(
+                slot="mobile",
+                text="What's the mobile number you used? I'll fetch everything against it.",
+                input_type="tel",
+                placeholder="10-digit mobile number",
+            ),
+        }
+
+    records = intents.list_by_customer(customer_id, active_only=False)
+    if not records:
+        return {
+            "messages": [
+                {
+                    "role": "bot",
+                    "text": "I couldn't find any past requests against that number yet — "
+                            "but that's easily fixed 🙂",
+                }
+            ],
+            "state": state,
+            "question": next_question(state),
+        }
+
+    _send_status_link(customer_id, base_url)
+    return {
+        "messages": [
+            {"role": "bot", "text": "Here's everything you have with us 👇 Live status, no login needed."},
+            {"role": "bot", "card": _status_card(customer_id, base_url, records)},
+            {"role": "bot", "text": "I've texted you the link too, so you can reopen it any time."},
+        ],
+        "state": state,
+        "question": None,
+    }
+
+
+def _change_product(state: dict[str, Any]) -> dict[str, Any]:
+    cleaned = _reset_requirement(state)
+    return {
+        "messages": [
+            {
+                "role": "bot",
+                "text": "Of course — let's switch it up. 🙂 I've kept your details, "
+                        "so this will be quick.",
+            }
+        ],
+        "state": cleaned,
+        "question": Question(
+            slot="category",
+            text="What would you like to buy instead?",
+            chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
+            placeholder="Or just type it, e.g. “100 kg basmati”",
+        ),
+    }
+
+
+def _exit(state: dict[str, Any], base_url: str) -> dict[str, Any]:
+    active = _active_requests(state)
+    if active:
+        customer_id = state["_customer_id"]
+        _send_status_link(customer_id, base_url)
+        return {
+            "messages": [
+                {
+                    "role": "bot",
+                    "text": (
+                        "You're all set 👍 You can close this page — you don't need to keep it "
+                        "open.\n\nWe'll message you the moment more buyers join, your group hits "
+                        "a new quantity level, or your price drops."
+                    ),
+                },
+                {"role": "bot", "card": _status_card(customer_id, base_url, active)},
+            ],
+            "state": state,
+            "question": None,
+        }
+    return {
+        "messages": [
+            {
+                "role": "bot",
+                "text": (
+                    "No problem at all — nothing was saved. 👋\n\nCome back any time; the more "
+                    "buyers pool together, the better the price gets for everyone."
+                ),
+            }
+        ],
+        "state": _reset_requirement(state),
+        "question": None,
+    }
+
+
+def handle_command(command: str, state: dict[str, Any], base_url: str) -> dict[str, Any] | None:
+    if command == "cancel":
+        return _cancel(state, base_url)
+    if command == "show_past":
+        return _show_past(state, base_url)
+    if command == "change_product":
+        return _change_product(state)
+    if command == "restart":
+        result = _change_product(state)
+        result["messages"] = [{"role": "bot", "text": "Sure — starting fresh. 🙂"}]
+        return result
+    if command == "exit":
+        return _exit(state, base_url)
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # returning customers
 # --------------------------------------------------------------------------- #
 RETURNING_CHIPS = [
@@ -496,14 +747,22 @@ ESSENTIAL_SLOTS = ("category", "quantity", "city", "name", "mobile")
 
 
 #: Shown instead of repeating a question verbatim when the answer didn't land.
+#: Never a bare apology -- each one restates the question and shows the way out.
 CLARIFIERS = {
-    "quantity": "Sorry, I didn't catch the number. Just the quantity is fine — how many do you need?",
-    "city": "Which city should I look for other buyers in?",
-    "name": "Sorry — what name should I save this under?",
-    "mobile": ("I couldn't read that as a mobile number. Please type your 10-digit "
-               "number (digits only) so we can send you price updates."),
-    "category": "Which of these are you looking to buy?",
+    "quantity": "No worries — just the number is fine. How many do you need?",
+    "city": "Almost there 🙂 Which city should I look for other buyers in?",
+    "name": "What name should I save this under?",
+    "mobile": ("Let's try that again — a 10-digit number, digits only. It's only used to "
+               "send you price updates and to find your requests later."),
+    "category": "No problem — pick one of these, or just tell me what you need:",
 }
+
+#: Offered whenever the bot has to re-ask, so the customer always has an exit.
+ESCAPE_CHIPS = [
+    _chip("🔁 Change product", "change product"),
+    _chip("📋 My requests", "show my requests"),
+    _chip("✖ Cancel", "cancel my request"),
+]
 
 
 def _track_misses(state: dict[str, Any], expecting: str | None, changed: list[str]) -> None:
@@ -529,7 +788,26 @@ def _question_text(question: Question, state: dict[str, Any]) -> str:
     clarifier = CLARIFIERS.get(question.slot)
     if clarifier:
         return clarifier
-    return f"Sorry, I didn't quite get that. {question.text}"
+    return f"Let me put that another way 🙂 {question.text}"
+
+
+def _with_escapes(question: Question | None, state: dict[str, Any]) -> Question | None:
+    """After a missed answer, surface the ways out alongside the retry so the
+    customer is never stuck repeating themselves."""
+    if question is None:
+        return None
+    if not int(dict(state.get("_misses", {})).get(question.slot, 0)):
+        return question
+    existing = {c["value"] for c in question.chips}
+    extra = [c for c in ESCAPE_CHIPS if c["value"] not in existing]
+    return Question(
+        slot=question.slot,
+        text=question.text,
+        chips=question.chips + extra,
+        input_type=question.input_type,
+        placeholder=question.placeholder,
+        optional=question.optional,
+    )
 
 
 def _mark_optional_asked(state: dict[str, Any], question: Question | None) -> None:
@@ -582,7 +860,9 @@ def acknowledgement(state: dict[str, Any], changed: list[str]) -> str | None:
     if spec.strip() == category.noun():
         spec = ""
     if qty and spec:
-        return f"Got it — {category.qty_label(qty)} of {spec}."
+        # "2 × 1.5 Ton Split Inverter AC" rather than "2 ACs of 1.5 Ton ... AC".
+        counter = f"{qty:g} kg of" if category.unit == "kg" else f"{qty:g} ×"
+        return f"Got it — {counter} {spec}."
     if qty:
         return f"Got it — {category.qty_label(qty)}."
     if spec:
@@ -642,6 +922,55 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
 
     history.append({"role": "user", "text": truncate(text, 500), "ts": now_iso()})
     expecting = state.get("_expecting")
+
+    # --- steering commands win over everything, at every stage -------------- #
+    # "cancel my request" is never an answer to "Split or Window?".
+    if expecting == "_cancel_choice":
+        chosen = re.search(r"\b(INT-\d+)\b", text, re.I)
+        if chosen:
+            intent_id = chosen.group(1).upper()
+            record = intents.get_full(intent_id)
+            intents.set_status(intent_id, "cancelled")
+            label = intents.summarise_for_customer(record) if record else intent_id
+            messages.append(
+                {"role": "bot", "text": f"Cancelled ✅ **{label}** is out of the group now."}
+            )
+        else:
+            messages.append({"role": "bot", "text": "Kept them all 👍 Nothing was cancelled."})
+        state["_expecting"] = None
+        remaining = _active_requests(state)
+        history += messages
+        _save(conversation, state, history, STAGE_DONE if remaining else STAGE_COLLECTING)
+        payload = _respond(
+            session_id, STAGE_DONE if remaining else STAGE_COLLECTING,
+            messages, None, state, base_url,
+        )
+        payload["chips"] = [
+            _chip("➕ New request", "new request"),
+            _chip("📋 My requests", "show my requests"),
+        ]
+        return payload
+
+    command = detect_command(text, expecting)
+    if command:
+        outcome = handle_command(command, state, base_url)
+        if outcome is not None:
+            state = outcome["state"]
+            messages += outcome["messages"]
+            question = outcome["question"]
+            state["_expecting"] = question.slot if question else None
+            if question is not None and question.text:
+                messages.append({"role": "bot", "text": question.text})
+            stage = STAGE_DONE if question is None else STAGE_COLLECTING
+            history += messages
+            _save(conversation, state, history, stage)
+            payload = _respond(session_id, stage, messages, question, state, base_url)
+            if question is None and not payload.get("chips"):
+                payload["chips"] = [
+                    _chip("➕ New request", "new request"),
+                    _chip("📋 My requests", "show my requests"),
+                ]
+            return payload
 
     # --- invitee confirming the group they were invited to ------------------ #
     if expecting == "_landing_confirm":
@@ -734,27 +1063,10 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
         return _respond(session_id, STAGE_COLLECTING, messages, question, state, base_url)
 
     # --- conversational side-tracks ---------------------------------------- #
-    if intent == "restart":
-        state = {"_restarted": True}
-        messages.append({"role": "bot", "text": "No problem — let's start again. What are you looking to buy?"})
-        question = next_question(state)
-        state["_expecting"] = question.slot if question else None
-        history += messages
-        _save(conversation, state, history, STAGE_COLLECTING)
-        return _respond(session_id, STAGE_COLLECTING, messages, question, state, base_url)
-
+    # cancel / show_past / change_product / restart / exit are handled above,
+    # before extraction, so they work at any point in the flow.
     if intent == "explain":
         messages.append({"role": "bot", "text": _explainer(state)})
-
-    if intent == "stop" and stage == STAGE_DONE and state.get("_intent_id"):
-        intents.set_status(state["_intent_id"], "cancelled")
-        messages.append(
-            {"role": "bot", "text": "Done — I've removed your requirement from the group. "
-                                    "Come back any time if you change your mind."}
-        )
-        history += messages
-        _save(conversation, state, history, STAGE_DONE)
-        return _respond(session_id, STAGE_DONE, messages, None, state, base_url)
 
     if intent == "ready_to_buy" and state.get("_intent_id"):
         intents.set_strength(state["_intent_id"], "ready_to_buy")
@@ -801,6 +1113,28 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
 
     # A known mobile number interrupts the flow exactly once.
     gate = _returning_gate(state, base_url)
+
+    # They asked to see their requests before we knew who they were; the mobile
+    # has now landed, so answer the original question instead of the gate's.
+    if state.pop("_pending_command", None) == "show_past":
+        outcome = _show_past(state, base_url)
+        state = outcome["state"]
+        messages += outcome["messages"]
+        question = outcome["question"]
+        state["_expecting"] = question.slot if question else None
+        if question is not None and question.text:
+            messages.append({"role": "bot", "text": question.text})
+        stage = STAGE_DONE if question is None else STAGE_COLLECTING
+        history += messages
+        _save(conversation, state, history, stage)
+        payload = _respond(session_id, stage, messages, question, state, base_url)
+        if question is None:
+            payload["chips"] = [
+                _chip("➕ New request", "new request"),
+                _chip("📋 Open my requests", "show my requests"),
+            ]
+        return payload
+
     if gate is not None:
         messages += gate["messages"]
         if gate["question"] is not None:
@@ -830,6 +1164,7 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
     _mark_optional_asked(state, question)
     state["_expecting"] = question.slot
     prompt = _question_text(question, state)
+    question = _with_escapes(question, state)
     if prompt:
         messages.append({"role": "bot", "text": prompt})
     history += messages
@@ -868,8 +1203,10 @@ def _done_chips(state: dict[str, Any]) -> list[dict[str, str]]:
         return []
     return [
         _chip("📲 Share on WhatsApp", "share"),
-        _chip("💬 How does this work?", "how does this work"),
         _chip("🛒 I'm ready to buy", "I am ready to buy"),
+        _chip("📋 My requests", "show my requests"),
+        _chip("➕ Another product", "change product"),
+        _chip("✖ Cancel request", "cancel my request"),
     ]
 
 
