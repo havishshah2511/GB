@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 174 tests
+python -m pytest        # 188 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -195,6 +195,22 @@ category's own slot definitions, so the model cannot invent slot names.
 
 Hard filters first — same category, same city, compatible specification,
 overlapping purchase windows, compatible brand policy. Survivors are scored:
+
+### Purchase windows are deadlines, not appointments
+
+**"Within 15 days" means any time between now and then.** An intent's window
+therefore runs from `earliest_purchase_date` (today, for anyone who answered
+with a deadline) to `maximum_purchase_date` — not from the desired date.
+
+Treating the desired date as the window *start* is subtly catastrophic: a buyer
+saying "within 7 days" got 24–31 Aug and one saying "within 15 days" got 1–8
+Sep. Adjacent, non-overlapping, so two buyers who wanted the same rice in the
+same city were split into separate groups, their quantities never combined, the
+price never dropped, and nobody was notified. `test_window_matching.py` pins it.
+
+Only an explicitly chosen calendar date is treated as "not before then", so a
+buyer purchasing in four months still won't be pooled with a group closing this
+week.
 
 ```
 40  base
@@ -415,6 +431,7 @@ tests/test_matching.py       exact vs flexible, momentum, windows, expiry
 tests/test_conversation.py   question order, mobile-first, loop guards, resume
 tests/test_returning_customer.py  recognition, status page, live merge updates
 tests/test_commands.py       cancel / show-past / change-product / exit, mid-flow
+tests/test_window_matching.py  deadline semantics, pooling, no dead-end loops
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations
 tests/test_end_to_end.py     the full loop, asserted against the spec's numbers

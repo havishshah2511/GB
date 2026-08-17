@@ -444,9 +444,14 @@ def extract(text: str, state: dict[str, Any], expecting: str | None = None) -> d
                     found[name] = value
 
     if not state.get("desired_purchase_date") and "desired_purchase_date" not in found:
-        when, _ = extract_date(text)
+        when, within_days = extract_date(text)
         if when:
             found["desired_purchase_date"] = str(when)
+            # "within 15 days" is a deadline, not an appointment: the buyer is
+            # happy any time between now and then. Recording that keeps them
+            # matchable against buyers who said "within 7 days".
+            if within_days is not None:
+                found["purchase_within_days"] = within_days
 
     if not state.get("budget") and "budget" not in found:
         budget = extract_budget(text)
@@ -513,6 +518,8 @@ def _extract_for_slot(
             out: dict[str, Any] = {"desired_purchase_date": str(when)}
             if days is not None:
                 out["purchase_period"] = text.strip()
+                # A deadline, not an appointment -- they are available from now.
+                out["purchase_within_days"] = days
             return out
         return None
 

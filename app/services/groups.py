@@ -144,8 +144,12 @@ def _aggregate(group_id: str) -> dict[str, Any]:
     strong_qty, strong_customers = total(STRONG_STRENGTHS)
     confirmed_qty, _ = total(("confirmed",))
 
+    # The group is buyable from the earliest date any member accepts until the
+    # last date they all still accept. COALESCE keeps intents written before
+    # earliest_purchase_date existed working.
     window = query_one(
-        "SELECT MIN(desired_purchase_date) AS start, MAX(maximum_purchase_date) AS end "
+        "SELECT MIN(COALESCE(earliest_purchase_date, desired_purchase_date)) AS start, "
+        "MAX(maximum_purchase_date) AS end "
         "FROM purchase_intents WHERE group_id = ? AND status = 'active'",
         (group_id,),
     )

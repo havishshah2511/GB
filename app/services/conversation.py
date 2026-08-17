@@ -765,6 +765,27 @@ ESCAPE_CHIPS = [
 ]
 
 
+def _salvage(state: dict[str, Any], expecting: str | None, text: str) -> bool:
+    """Last resort after repeated misses on a free-text slot.
+
+    The name is whatever the customer says it is -- if the parser can't make
+    sense of it we take the raw text rather than asking a third time. Mobile is
+    deliberately excluded: an unparseable number is useless to us and to them.
+    """
+    if expecting not in ("name", "area", "city"):
+        return False
+    if int(dict(state.get("_misses", {})).get(expecting, 0)) < 2:
+        return False
+    raw = truncate(text.strip(), 60)
+    if not raw or nlu.rules._is_filler(raw):
+        return False
+    state[expecting] = raw
+    misses = dict(state.get("_misses", {}))
+    misses.pop(expecting, None)
+    state["_misses"] = misses
+    return True
+
+
 def _track_misses(state: dict[str, Any], expecting: str | None, changed: list[str]) -> None:
     """Remember unproductive answers so the bot rephrases instead of repeating,
     and eventually moves on from anything optional."""
@@ -1048,6 +1069,8 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
 
     changed = apply_slots(state, slots, expecting)
     _track_misses(state, expecting, changed)
+    if expecting and expecting not in changed and _salvage(state, expecting, text):
+        changed.append(expecting)
 
     # "Choose a date" opens a date picker instead of another text round-trip.
     if expecting == "desired_purchase_date" and "choose a date" in text.lower():

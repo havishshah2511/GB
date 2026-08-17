@@ -184,6 +184,9 @@ def new_id(prefix: str, sequence: str | None = None, width: int = 5, start: int 
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("customers", "status_token", "TEXT"),
     ("conversations", "live_cursor", "TEXT"),
+    # Earliest date the buyer would accept delivery. "Within 15 days" means
+    # any time from now, so this is today -- not the desired date.
+    ("purchase_intents", "earliest_purchase_date", "TEXT"),
 )
 
 

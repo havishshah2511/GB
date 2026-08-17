@@ -35,7 +35,18 @@ WINDOW_WEIGHT = 5
 
 
 def _window(intent: dict[str, Any]) -> tuple[date, date]:
-    start = parse_date(intent.get("desired_purchase_date")) or today()
+    """The span of dates this buyer would accept.
+
+    Starts at `earliest_purchase_date`, which is today for anyone who answered
+    with a deadline ("within 15 days") rather than a fixed date. Using the
+    desired date as the start would put a "within 7 days" buyer and a "within
+    15 days" buyer in non-overlapping windows and split the group in two.
+    """
+    start = (
+        parse_date(intent.get("earliest_purchase_date"))
+        or parse_date(intent.get("desired_purchase_date"))
+        or today()
+    )
     end = parse_date(intent.get("maximum_purchase_date")) or start
     if end < start:
         start, end = end, start

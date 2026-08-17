@@ -50,6 +50,19 @@ def expiry_for(desired: date | None, maximum: date | None) -> date:
     return anchor + timedelta(days=settings.INTENT_GRACE_DAYS)
 
 
+def earliest_for(state: dict[str, Any], desired: date | None) -> date | None:
+    """The first date this buyer would accept.
+
+    "Within 15 days" is a deadline -- they are available from today, and pooling
+    them with a "within 7 days" buyer is exactly the point of the product. Only
+    an explicitly chosen calendar date means "not before then".
+    """
+    if state.get("purchase_within_days") is not None:
+        return today()
+    explicit = parse_date(state.get("earliest_purchase_date"))
+    return explicit or desired
+
+
 # --------------------------------------------------------------------------- #
 # read
 # --------------------------------------------------------------------------- #
@@ -156,6 +169,7 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
     desired = parse_date(state.get("desired_purchase_date"))
     maximum = parse_date(state.get("maximum_purchase_date")) or desired
     quantity = to_float(state.get("quantity"), 0) or 0.0
+    earliest = earliest_for(state, desired)
 
     stamp = now_iso()
     intent_id = new_id("INT", width=5, start=10000)
@@ -170,6 +184,7 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
         "unit": category.unit,
         "area": state.get("area"),
         "city": state.get("city"),
+        "earliest_purchase_date": str(earliest) if earliest else None,
         "desired_purchase_date": str(desired) if desired else None,
         "maximum_purchase_date": str(maximum) if maximum else None,
         "can_wait": 1 if state.get("can_wait") else 0,
@@ -230,8 +245,9 @@ def update(intent_id: str, patch: dict[str, Any], rematch: bool = False) -> dict
     category = catalog.require(intent["category"])
 
     columns = {
-        "quantity", "area", "city", "desired_purchase_date", "maximum_purchase_date",
-        "can_wait", "brand_flexible", "budget", "status", "intent_strength", "group_id",
+        "quantity", "area", "city", "earliest_purchase_date", "desired_purchase_date",
+        "maximum_purchase_date", "can_wait", "brand_flexible", "budget", "status",
+        "intent_strength", "group_id",
     }
     data: dict[str, Any] = {k: v for k, v in patch.items() if k in columns}
 

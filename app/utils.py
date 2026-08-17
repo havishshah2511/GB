@@ -78,7 +78,9 @@ def clean_name(raw: str | None) -> str | None:
     text = re.sub(r"[^A-Za-z\s\.\-']", " ", str(raw)).strip()
     text = re.sub(r"\s+", " ", text)
     words = [w for w in text.split() if w.lower() not in _NAME_STOPWORDS]
-    if not words or len(" ".join(words)) < 2:
+    # One-letter names are real names; rejecting them used to trap the customer
+    # on the name question forever.
+    if not words or not " ".join(words):
         return None
     return " ".join(w.capitalize() if w.islower() or w.isupper() else w for w in words[:4])
 

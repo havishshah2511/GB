@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS purchase_intents (
     unit                  TEXT NOT NULL DEFAULT 'unit',
     area                  TEXT,
     city                  TEXT,
+    -- Earliest acceptable date. A "within N days" answer is a deadline, so the
+    -- buyer is available from today; an explicit date is a genuine target.
+    earliest_purchase_date TEXT,
     desired_purchase_date TEXT,
     maximum_purchase_date TEXT,
     can_wait              INTEGER NOT NULL DEFAULT 0,

@@ -193,6 +193,34 @@ def test_cancel_with_several_requests_asks_which(chat):
     assert intents.get(target["id"])["status"] == "cancelled"
 
 
+def test_an_unparseable_name_cannot_trap_the_customer(chat):
+    """A name the parser can't read used to loop forever: 'name' is essential,
+    so it was never skipped, and the bot re-asked indefinitely."""
+    chat("loop1", "")
+    chat("loop1", "I need 2 AC")
+    reply = chat("loop1", "9876523001")
+
+    asked = []
+    for _ in range(20):
+        question = reply.get("question")
+        if not question or reply.get("done"):
+            break
+        asked.append(question["slot"])
+        reply = chat("loop1", "A" if question["slot"] == "name"
+                     else (question["chips"][0]["value"] if question["chips"] else "Ahmedabad"))
+
+    assert asked.count("name") <= 2, f"looped on the name question: {asked}"
+    assert reply.get("done") is True
+    assert reply["summary"]["name"] == "A"
+
+
+def test_a_single_character_name_is_accepted(chat):
+    reply = answer_all(chat, "loop2", "I need 2 AC", {**AC_ANSWERS, "name": "V",
+                                                      "mobile": "9876523002"})
+    assert reply["done"] is True
+    assert reply["summary"]["name"] == "V"
+
+
 def test_a_name_that_looks_like_a_command_is_taken_literally(chat):
     chat("c10", "")
     chat("c10", "I need 2 AC")
