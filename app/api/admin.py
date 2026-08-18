@@ -258,11 +258,14 @@ def expiring_intents(days: int | None = None) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 @router.get("/groups")
 def list_groups(category: str | None = None, city: str | None = None,
-                status_filter: str | None = None) -> dict[str, Any]:
+                status_filter: str | None = None,
+                include_merged: bool = False) -> dict[str, Any]:
+    """Groups absorbed by a merge are hidden unless asked for -- they hold no
+    demand and would otherwise inflate the product-wise counts."""
     return {
         "groups": [
             groups.summary_for_admin(g)
-            for g in groups.list_groups(category, city, status_filter)
+            for g in groups.list_groups(category, city, status_filter, include_merged)
         ]
     }
 
@@ -334,6 +337,19 @@ def set_group_status(group_ref: str, new_status: str) -> dict[str, Any]:
     groups.set_status(group["id"], new_status)
     _audit("group_status", "group", group["id"], {"status": new_status})
     return {"group": groups.to_api(groups.get(group["id"]))}  # type: ignore[arg-type]
+
+
+@router.post("/groups/consolidate")
+def consolidate_groups(dry_run: bool = False) -> dict[str, Any]:
+    """Pool every pair of open groups buying the same product in the same city.
+
+    Runs automatically on the background worker; this exposes it so an operator
+    can preview (`dry_run=1`) or force a pass without waiting.
+    """
+    outcome = groups.consolidate(dry_run=dry_run)
+    if not dry_run and outcome["groups_merged"]:
+        _audit("consolidate", "group", None, outcome)
+    return outcome
 
 
 @router.post("/groups/merge")

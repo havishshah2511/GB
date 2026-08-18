@@ -15,7 +15,7 @@ from ..db import (
     dumps, execute, insert, loads, next_sequence, now_iso, parse_date,
     query, query_one, row_to_dict, today,
 )
-from ..utils import short_date
+from ..utils import overlap_days, short_date
 from . import pricing
 
 ACTIVE_STRENGTHS = ("intent", "strong_intent", "ready_to_buy", "confirmed")
@@ -43,8 +43,14 @@ def spec_of(group: dict[str, Any]) -> dict[str, Any]:
     return loads(group.get("product_specification"), {})
 
 
+#: A group that was absorbed by a merge keeps its row so old links and reports
+#: still resolve, but it holds no intents and must not be listed as demand.
+CLOSED_STATUSES = ("merged",)
+
+
 def list_groups(
-    category: str | None = None, city: str | None = None, status: str | None = None
+    category: str | None = None, city: str | None = None, status: str | None = None,
+    include_merged: bool = False,
 ) -> list[dict[str, Any]]:
     sql = "SELECT * FROM buying_groups WHERE 1 = 1"
     params: list[Any] = []
@@ -57,6 +63,10 @@ def list_groups(
     if status:
         sql += " AND status = ?"
         params.append(status)
+    elif not include_merged:
+        placeholders = ", ".join("?" for _ in CLOSED_STATUSES)
+        sql += f" AND status NOT IN ({placeholders})"
+        params.extend(CLOSED_STATUSES)
     sql += " ORDER BY strong_intent_qty DESC, updated_at DESC"
     return [dict(r) for r in query(sql, params)]
 
@@ -286,6 +296,14 @@ def merge(source_id: str, target_id: str) -> dict[str, Any]:
     if source["product_category"] != target["product_category"]:
         raise ValueError("Groups belong to different product categories")
 
+    # Who is moving, and what were they paying before the move? The target's
+    # own price may not change at all, so recalculate() cannot discover this.
+    moving = members(source_id, active_only=True)
+    before = {
+        "strong_intent_qty": source["strong_intent_qty"],
+        "current_price": source["current_price"],
+    }
+
     execute(
         "UPDATE purchase_intents SET group_id = ?, updated_at = ? WHERE group_id = ?",
         (target_id, now_iso(), source_id),
@@ -298,7 +316,125 @@ def merge(source_id: str, target_id: str) -> dict[str, Any]:
         (now_iso(), source_id),
     )
     recalculate(source_id, notify=False)
-    return recalculate(target_id)
+    outcome = recalculate(target_id)
+
+    _notify_absorbed_members(outcome["group"], before, moving)
+    return outcome
+
+
+def _notify_absorbed_members(group: dict[str, Any], before: dict[str, Any],
+                             moving: list[dict[str, Any]]) -> None:
+    """Tell buyers pulled into a bigger pool that their price improved.
+
+    Their old group is gone, so nothing else would ever tell them.
+    """
+    from . import notifications
+
+    old_price = float(before.get("current_price") or 0)
+    new_price = float(group.get("current_price") or 0)
+    if not old_price or not new_price or new_price >= old_price:
+        return
+
+    for member in moving:
+        if not member.get("customer_id"):
+            continue
+        notifications.queue(
+            member["customer_id"], group["id"], "price_drop",
+            notifications.price_drop_message(group, before, member),
+            intent_id=member["id"],
+            payload={"merged_into": group["code"], "previous_price": old_price},
+            dedupe_key=f"merge_drop:{group['id']}:{member['customer_id']}:{new_price:g}",
+        )
+
+
+def mergeable(source: dict[str, Any], target: dict[str, Any]) -> tuple[bool, str]:
+    """Would these two groups serve the same purchase?
+
+    Deliberately strict: same category, same product specification, same city
+    and the same brand policy. Two groups that pass this are buying the same
+    thing in the same place, so keeping them apart only weakens both.
+    """
+    if source["id"] == target["id"]:
+        return False, "same group"
+    if source["product_category"] != target["product_category"]:
+        return False, "different category"
+    if source["spec_signature"] != target["spec_signature"]:
+        return False, "different product specification"
+    if (source["city"] or "").strip().lower() != (target["city"] or "").strip().lower():
+        return False, "different city"
+    if source["match_mode"] != target["match_mode"]:
+        return False, "different brand policy"
+    for group in (source, target):
+        if group["status"] not in ("collecting_intent", "negotiating"):
+            return False, f"{group['code']} is {group['status']}"
+
+    # An exact group is locked to one brand; two locked to different brands are
+    # genuinely different purchases.
+    if source["match_mode"] == "exact":
+        s_brand = (spec_of(source).get("brand") or "").strip().lower()
+        t_brand = (spec_of(target).get("brand") or "").strip().lower()
+        if s_brand != t_brand:
+            return False, "locked to different brands"
+
+    overlap = overlap_days(
+        parse_date(source["purchase_window_start"]) or today(),
+        parse_date(source["purchase_window_end"]) or today(),
+        parse_date(target["purchase_window_start"]) or today(),
+        parse_date(target["purchase_window_end"]) or today(),
+    )
+    if overlap < settings.MATCH_MIN_WINDOW_OVERLAP_DAYS:
+        return False, f"purchase windows do not overlap ({overlap}d)"
+
+    return True, "same product, same city, overlapping windows"
+
+
+def consolidate(dry_run: bool = False) -> dict[str, Any]:
+    """Merge every pair of open groups that are buying the same thing.
+
+    Runs on a schedule so a split can never survive: whatever caused two groups
+    for one product in one city -- a matching-rule change, an admin edit, a
+    race between two simultaneous first buyers -- they are pooled on the next
+    pass and the price is recalculated for everyone.
+
+    The larger group absorbs the smaller, so group codes customers have already
+    been given keep working wherever possible.
+    """
+    open_groups = [
+        dict(r)
+        for r in query(
+            "SELECT * FROM buying_groups WHERE status IN ('collecting_intent', 'negotiating') "
+            "ORDER BY strong_intent_qty DESC, current_qty DESC, created_at ASC"
+        )
+    ]
+
+    merged: list[dict[str, Any]] = []
+    absorbed: set[str] = set()
+
+    for i, target in enumerate(open_groups):
+        if target["id"] in absorbed:
+            continue
+        for source in open_groups[i + 1:]:
+            if source["id"] in absorbed:
+                continue
+            ok, reason = mergeable(source, target)
+            if not ok:
+                continue
+            merged.append(
+                {
+                    "source": source["code"],
+                    "target": target["code"],
+                    "reason": reason,
+                    "quantity_moved": float(source["current_qty"] or 0),
+                }
+            )
+            absorbed.add(source["id"])
+            if not dry_run:
+                # Re-read: earlier merges in this pass changed the target.
+                current = get(target["id"])
+                if current is not None:
+                    merge(source["id"], current["id"])
+
+    return {"merged": merged, "groups_merged": len(merged), "dry_run": dry_run}
 
 
 def split(group_id: str, intent_ids: list[str], match_mode: str | None = None) -> dict[str, Any]:

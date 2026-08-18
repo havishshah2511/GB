@@ -19,16 +19,27 @@ log = logging.getLogger("groupbuy.worker")
 def run_once(base_url: str = "") -> dict[str, Any]:
     """One maintenance pass. Safe to call concurrently -- every step is
     idempotent and notification dedupe keys prevent repeats."""
+    # Consolidate first: pooling two groups changes quantities and prices, and
+    # the members of the absorbed group should hear about that in this same
+    # pass rather than a minute later.
+    consolidated = groups.consolidate()
     expired = intents.expire_due()
     reminders = notifications.send_expiry_reminders(base_url)
     dispatched = notifications.dispatch()
-    return {
+    result = {
+        "groups_merged": consolidated["groups_merged"],
         "intents_expired": expired["expired"],
         "groups_recalculated": expired["groups_recalculated"],
         "expiry_reminders_queued": reminders,
         "notifications_sent": dispatched["sent"],
         "notifications_failed": dispatched["failed"],
     }
+    for entry in consolidated["merged"]:
+        log.info(
+            "merged %s into %s (%s) -- %g units pooled",
+            entry["source"], entry["target"], entry["reason"], entry["quantity_moved"],
+        )
+    return result
 
 
 def sweep_groups() -> int:

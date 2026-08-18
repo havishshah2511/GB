@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 188 tests
+python -m pytest        # 201 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -355,6 +355,7 @@ GET  /api/admin/groups              GET  /api/admin/groups/{id}
 PUT  /api/admin/groups/{id}/slabs   POST /api/admin/groups/{id}/supplier-price
 POST /api/admin/groups/{id}/status  POST /api/admin/groups/{id}/notify
 POST /api/admin/groups/merge        POST /api/admin/groups/{id}/split
+POST /api/admin/groups/consolidate
 GET  /api/admin/intents             GET  /api/admin/intents/{id}
 PUT  /api/admin/intents/{id}        POST /api/admin/intents/move
 POST /api/admin/intents/{id}/status POST /api/admin/intents/{id}/strength
@@ -401,10 +402,35 @@ mutation is written to an audit log.
 Runs in-process every 60s (`ENABLE_BACKGROUND_WORKER=0` to disable and drive it
 externally instead):
 
-1. expire intents past their window and re-aggregate affected groups
-2. queue reconfirmation reminders for intents nearing expiry
-3. dispatch the outbox
-4. every tenth tick, sweep all groups for milestone notifications
+1. **consolidate** — pool any two open groups buying the same thing
+2. expire intents past their window and re-aggregate affected groups
+3. queue reconfirmation reminders for intents nearing expiry
+4. dispatch the outbox
+5. every tenth tick, sweep all groups for milestone notifications
+
+### Consolidation
+
+Matching decides where a *new* intent goes. Consolidation is the safety net for
+groups that are already apart: every pass, any two open groups with the same
+category, specification, city, brand policy and overlapping windows are pooled,
+larger absorbing smaller so codes already shared with customers keep working.
+
+It exists because a split is invisible to the customer and expensive to the
+business — two half-groups both pay the higher price. Whatever the cause (a
+matching-rule change, an admin edit, two simultaneous first buyers racing),
+the next pass heals it.
+
+Buyers pulled into the bigger pool are told when their price improves. Their old
+group's price is compared against the new one — the *target* group's price often
+does not change at all, so the ordinary recalculation can never discover this.
+
+```bash
+curl -u admin:admin -X POST '.../api/admin/groups/consolidate?dry_run=true'
+```
+
+`dry_run` previews the merges with reasons and changes nothing. Merged groups
+keep their row so old links resolve, but drop out of the back office and out of
+demand totals.
 
 Same work over HTTP: `POST /api/notifications/process`.
 
@@ -432,6 +458,7 @@ tests/test_conversation.py   question order, mobile-first, loop guards, resume
 tests/test_returning_customer.py  recognition, status page, live merge updates
 tests/test_commands.py       cancel / show-past / change-product / exit, mid-flow
 tests/test_window_matching.py  deadline semantics, pooling, no dead-end loops
+tests/test_consolidation.py  auto-merge sweep, what must never be pooled
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations
 tests/test_end_to_end.py     the full loop, asserted against the spec's numbers

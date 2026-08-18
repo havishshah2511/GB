@@ -227,10 +227,12 @@ def get_referral(code: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 @router.post("/notifications/process")
 def process_notifications(request: Request, limit: int = 100) -> dict[str, Any]:
+    consolidated = groups.consolidate()
     reminders = notifications.send_expiry_reminders(base_url(request))
     expired = intents.expire_due()
     dispatched = notifications.dispatch(limit)
     return {
+        "groups_merged": consolidated["groups_merged"],
         "expiry_reminders_queued": reminders,
         "intents_expired": expired["expired"],
         "groups_recalculated": expired["groups_recalculated"],
