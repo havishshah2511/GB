@@ -19,7 +19,17 @@ router = APIRouter(prefix="/api", tags=["public"])
 
 
 def base_url(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    """Absolute origin for share and status links.
+
+    Behind a TLS-terminating proxy the request itself looks like plain http, so
+    an unqualified base_url would hand customers http:// links that browsers
+    then block as mixed content. X-Forwarded-Proto is the proxy's answer.
+    """
+    origin = str(request.base_url).rstrip("/")
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    if forwarded == "https" and origin.startswith("http://"):
+        origin = "https://" + origin[len("http://"):]
+    return origin
 
 
 def _group_or_404(group_ref: str) -> dict[str, Any]:

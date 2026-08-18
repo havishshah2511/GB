@@ -42,7 +42,13 @@ class Settings:
     # --- server ---
     HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = _int("PORT", 8000)
-    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    # Render injects RENDER_EXTERNAL_URL with the full https URL, so a deploy
+    # gets correct share/status links without anyone setting anything by hand.
+    PUBLIC_BASE_URL: str = (
+        os.getenv("PUBLIC_BASE_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or ""
+    ).rstrip("/")
 
     # --- storage ---
     DB_PATH: str = os.getenv("DB_PATH", str(PROJECT_DIR / "data" / "groupbuy.db"))

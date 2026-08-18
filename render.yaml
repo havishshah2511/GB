@@ -1,34 +1,55 @@
-# One-click deploy on Render: New → Blueprint → point at this repo.
-# Everything else (Railway, Fly.io, Cloud Run) can use the Dockerfile directly.
+# Deploy on Render:  New  →  Blueprint  →  pick this repo  →  Apply.
+# You will be asked for ADMIN_PASSWORD only; everything else is set here.
+#
+# Other hosts (Railway, Fly.io, Cloud Run) can use the Dockerfile directly.
 services:
   - type: web
     name: groupbuy
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips '*'
     healthCheckPath: /health
     envVars:
-      # SQLite on a persistent disk. Without the disk the database resets on
-      # every deploy, which would wipe live buying groups.
+      # ---- storage -------------------------------------------------------
+      # Render's free plan cannot mount a persistent disk, so the SQLite file
+      # lives on the instance. It survives while the instance runs, and is lost
+      # on redeploy or when a free instance spins down after inactivity.
+      #
+      # For durable data, upgrade the plan and uncomment the `disk:` block plus
+      # the /var/data path below:
+      #   plan: starter
+      #   DB_PATH: /var/data/groupbuy.db
       - key: DB_PATH
-        value: /var/data/groupbuy.db
-      - key: PUBLIC_BASE_URL
-        sync: false          # set to your https://<service>.onrender.com URL
+        value: /tmp/groupbuy.db
+
+      # ---- admin ---------------------------------------------------------
       - key: ADMIN_USER
-        sync: false
+        value: admin
       - key: ADMIN_PASSWORD
-        sync: false
+        sync: false           # Render prompts for this on Apply
       - key: ADMIN_SECRET
-        generateValue: true
+        generateValue: true   # signs the admin session cookie
+
+      # ---- behaviour -----------------------------------------------------
+      # PUBLIC_BASE_URL is deliberately absent: Render sets RENDER_EXTERNAL_URL
+      # to the real https URL and the app falls back to it, so share and status
+      # links are correct on the first boot without anyone editing anything.
       - key: SEED_DEMO_DATA
         value: "0"
       - key: ENABLE_BACKGROUND_WORKER
         value: "1"
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+
       # Optional: switches the NLU from the offline rules engine to Claude.
-      - key: ANTHROPIC_API_KEY
-        sync: false
-    disk:
-      name: groupbuy-data
-      mountPath: /var/data
-      sizeGB: 1
+      # Add the key in the Render dashboard if you want it.
+      # - key: ANTHROPIC_API_KEY
+      #   sync: false
+
+    # Uncomment together with `plan: starter` above for a database that
+    # survives redeploys.
+    # disk:
+    #   name: groupbuy-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
