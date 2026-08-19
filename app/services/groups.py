@@ -446,6 +446,32 @@ def consolidate(dry_run: bool = False) -> dict[str, Any]:
     return {"merged": merged, "groups_merged": len(merged), "dry_run": dry_run}
 
 
+#: Child rows first -- foreign keys are enforced.
+_RESET_ORDER = (
+    "referral_events", "referrals", "notifications", "purchase_intents",
+    "conversations", "pricing_slabs", "buying_groups", "customers",
+)
+
+
+def reset_all(keep_customers: bool = False) -> dict[str, int]:
+    """Delete customer data and rebuild the pricing templates.
+
+    Shared by `wipe.py` and the back office's reset action so both behave
+    identically. Product slab templates are recreated afterwards, so the app
+    can price a brand new group immediately.
+    """
+    tables = [t for t in _RESET_ORDER if not (keep_customers and t == "customers")]
+    deleted: dict[str, int] = {}
+    for table in tables:
+        row = query_one(f"SELECT COUNT(*) AS n FROM {table}")
+        deleted[table] = int(row["n"]) if row else 0
+        execute(f"DELETE FROM {table}")
+    # Codes restart at 001 so a fresh test run reads cleanly.
+    execute("DELETE FROM sequences")
+    pricing.seed_product_slabs()
+    return deleted
+
+
 def split(group_id: str, intent_ids: list[str], match_mode: str | None = None) -> dict[str, Any]:
     """Pull a set of intents out of a group into a brand new one."""
     source = get(group_id)

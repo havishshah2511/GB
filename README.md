@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 236 tests
+python -m pytest        # 245 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -403,6 +403,7 @@ GET  /api/admin/customers           GET  /api/admin/referrals
 GET  /api/admin/conversations       GET  /api/admin/conversations/{session}
 GET  /api/admin/slab-templates      GET  /api/admin/audit
 POST /api/admin/maintenance/run-jobs
+POST /api/admin/maintenance/reset
 POST /api/admin/maintenance/recalculate-all
 ```
 
@@ -434,6 +435,38 @@ an extraction and re-run matching, move an intent between groups, merge or split
 groups, edit a group's slabs, mark a supplier price confirmed, message a group,
 change intent status or strength, and run the background jobs on demand. Every
 mutation is written to an audit log.
+
+---
+
+### Back-office actions
+
+| Button | What it does |
+| --- | --- |
+| **Refresh** | Reloads the figures on screen. Nothing is changed — the page does not poll, so this is how you see new customer activity |
+| **Run jobs** | Runs one background-worker pass immediately instead of waiting up to 60s: pool duplicate groups, expire past-deadline intents, queue reconfirmation reminders, send the outbox |
+| **Recalculate all** | Re-adds every group's quantities from its intents and re-checks which price slab it falls in. A repair tool — use it after editing intents directly or restoring a backup |
+| **Reset data** | Deletes every customer, request, group, referral and message. Guarded (see below) |
+
+`Run jobs` and `Recalculate all` are both safe to press at any time: every step
+is idempotent, and notification dedupe keys mean nobody gets messaged twice.
+
+### Resetting the data
+
+Clearing test data before going live needs no shell access:
+
+**Reset data** → type `DELETE ALL DATA` → optionally tick *Keep customers* to
+delete only their requests and groups.
+
+Three guards, because the endpoint is reachable on a public deployment:
+
+1. admin authentication
+2. the exact confirmation phrase, deliberately awkward to type by accident
+3. `ALLOW_DATA_RESET` — set it to `0` once real customers exist and the button
+   refuses with a 403
+
+Price slab templates survive a reset, so the app can price a brand new group
+immediately. Group codes restart at `001`. Every reset is written to the audit
+log. `python wipe.py` runs the identical code path from a terminal.
 
 ---
 
@@ -500,6 +533,7 @@ tests/test_commands.py       cancel / show-past / change-product / exit, mid-flo
 tests/test_window_matching.py  deadline semantics, pooling, no dead-end loops
 tests/test_consolidation.py  auto-merge sweep, what must never be pooled
 tests/test_open_products.py  any-product pooling, unpriced-group honesty
+tests/test_reset.py          data reset guards and behaviour
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations
 tests/test_end_to_end.py     the full loop, asserted against the spec's numbers

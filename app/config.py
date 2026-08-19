@@ -99,6 +99,11 @@ class Settings:
     # Set SEED_DEMO_DATA=1 on a throwaway database if you want the sample rows.
     SEED_DEMO_DATA: bool = _bool("SEED_DEMO_DATA", False)
 
+    # Allows the back office's "Reset data" action. Leave this ON while you are
+    # testing; turn it OFF (0) once real customers are in the database, so an
+    # operator cannot wipe live demand by mistake.
+    ALLOW_DATA_RESET: bool = _bool("ALLOW_DATA_RESET", True)
+
     def base_url(self, request_base: str = "") -> str:
         """Public URL used when building share links."""
         return self.PUBLIC_BASE_URL or request_base.rstrip("/") or f"http://{self.HOST}:{self.PORT}"

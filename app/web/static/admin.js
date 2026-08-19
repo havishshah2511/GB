@@ -753,6 +753,43 @@
   });
 
   $("#refresh").addEventListener("click", () => load(state.view));
+
+  // Reset is guarded by a typed phrase, not just a click -- there is no undo.
+  $("#reset-data").addEventListener("click", () => {
+    showModal("Reset all data", `
+      <p>This permanently deletes <strong>every customer, request, group,
+         referral and message</strong>. Price slab templates are kept, so the
+         app can price a new group straight away.</p>
+      <p class="hint">There is no undo. Intended for clearing test data before
+         you go live.</p>
+      <div class="kv">
+        <dt>Confirm</dt>
+        <dd><input id="reset-confirm" type="text" autocomplete="off"
+                   placeholder="DELETE ALL DATA" style="width:100%">
+            <div class="hint">Type <code>DELETE ALL DATA</code> exactly.</div></dd>
+        <dt>Keep customers</dt>
+        <dd><label><input id="reset-keep" type="checkbox">
+            Delete only requests and groups, keep the people</label></dd>
+      </div>`, [
+      { label: "Cancel", onClick: () => document.getElementById("modal").close() },
+      {
+        label: "Delete everything", primary: true, onClick: () => {
+          const phrase = $("#reset-confirm").value.trim();
+          if (phrase !== "DELETE ALL DATA") {
+            toast("⚠ Type the phrase exactly to confirm");
+            return;
+          }
+          const keep = $("#reset-keep").checked ? "&keep_customers=true" : "";
+          act(
+            () => api(`/maintenance/reset?confirm=${encodeURIComponent(phrase)}${keep}`,
+                      { method: "POST" })
+              .then(() => document.getElementById("modal").close()),
+            "All data deleted",
+          );
+        },
+      },
+    ]);
+  });
   $("#run-jobs").addEventListener("click", () =>
     act(() => api("/maintenance/run-jobs", { method: "POST" }), "Background jobs run"));
   $("#recalc-all").addEventListener("click", () =>

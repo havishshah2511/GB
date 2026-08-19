@@ -30,6 +30,9 @@ from ..services import (
 security = HTTPBasic(auto_error=False)
 SESSION_COOKIE = "gb_admin"
 
+#: Typed by the operator before anything is deleted. Deliberately awkward.
+RESET_PHRASE = "DELETE ALL DATA"
+
 
 # --------------------------------------------------------------------------- #
 # authentication
@@ -550,6 +553,32 @@ def run_jobs(request: Request) -> dict[str, Any]:
     from ..worker import run_once
 
     return run_once(str(request.base_url).rstrip("/"))
+
+
+@router.post("/maintenance/reset")
+def reset_data(confirm: str = "", keep_customers: bool = False) -> dict[str, Any]:
+    """Delete all customer data. Irreversible.
+
+    Guarded three ways because this is reachable on a public deployment:
+    admin auth, an explicit `confirm=DELETE ALL DATA` phrase, and a refusal
+    when the operator's own environment says this is production
+    (ALLOW_DATA_RESET=0). The dashboard asks the operator to type the phrase.
+    """
+    if not settings.ALLOW_DATA_RESET:
+        raise HTTPException(
+            403,
+            "Data reset is disabled on this deployment. Set ALLOW_DATA_RESET=1 to enable it.",
+        )
+    if confirm.strip() != RESET_PHRASE:
+        raise HTTPException(400, f"Send confirm={RESET_PHRASE!r} to proceed.")
+
+    before = {
+        table: int(query_one(f"SELECT COUNT(*) AS n FROM {table}")["n"])
+        for table in ("customers", "purchase_intents", "buying_groups", "notifications")
+    }
+    deleted = groups.reset_all(keep_customers=keep_customers)
+    _audit("reset", "database", None, {"before": before, "keep_customers": keep_customers})
+    return {"deleted": deleted, "before": before, "keep_customers": keep_customers}
 
 
 @router.get("/audit")

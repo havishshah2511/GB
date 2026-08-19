@@ -46,14 +46,13 @@ def counts() -> dict[str, int]:
 
 
 def wipe(keep_pricing: bool = False) -> None:
+    """Same code path as the back office's Reset action, so both behave alike."""
+    from app.services import groups
+
     init_db()
-    tables = [t for t in TABLES if not (keep_pricing and t == "pricing_slabs")]
-    for table in tables:
-        execute(f"DELETE FROM {table}")
+    groups.reset_all()
     # VACUUM cannot run inside a transaction, so it bypasses the helper.
     get_conn().execute("VACUUM")
-    if not keep_pricing:
-        pricing.seed_product_slabs()
 
 
 def main() -> int:

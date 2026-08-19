@@ -13,9 +13,10 @@
   <span class="pill" id="engine-pill">…</span>
   <span class="sp"></span>
   <span class="hint" id="updated"></span>
-  <button class="act" id="run-jobs" title="Expire due intents, queue reminders, dispatch the outbox">▶ Run jobs</button>
-  <button class="act" id="recalc-all" title="Re-aggregate every group">↻ Recalculate all</button>
-  <button class="act primary" id="refresh">Refresh</button>
+  <button class="act" id="run-jobs" title="Run the background worker now: pool duplicate groups, expire past-deadline intents, queue reminders, send the outbox">▶ Run jobs</button>
+  <button class="act" id="recalc-all" title="Re-add every group's quantities and re-check its price slab">↻ Recalculate all</button>
+  <button class="act danger" id="reset-data" title="Delete all customers, requests and groups">🗑 Reset data</button>
+  <button class="act primary" id="refresh" title="Reload this page's figures from the server">Refresh</button>
   <form method="post" action="/admin/logout" style="margin:0"><button class="act" type="submit">Sign out</button></form>
 </header>
 
