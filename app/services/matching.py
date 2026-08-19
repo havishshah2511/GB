@@ -86,7 +86,10 @@ def compatibility(intent: dict[str, Any], group: dict[str, Any]) -> dict[str, An
         if want is None or have is None:
             wildcards += 1
             reasons.append(f"{field}: flexible")
-        elif want.lower() == have.lower():
+        # Compare the canonical forms, not what was typed. For an open product
+        # "Office Chairs" and "good quality Office Chair" are the same thing,
+        # and the group signature already treats them as one.
+        elif category.canonical(want) == category.canonical(have):
             matched += 1
             reasons.append(f"{field}: {have}")
         else:

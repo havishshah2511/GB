@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from app import catalog
 from app.db import today
 
 INTENT_BODY = {
@@ -48,9 +49,12 @@ def test_chat_history_endpoint(client):
     assert data["summary"]["quantity"] == 2
 
 
-def test_catalog_endpoint_lists_both_categories(client):
+def test_catalog_endpoint_lists_every_category(client):
     data = client.get("/api/catalog").json()
-    assert {c["key"] for c in data["categories"]} == {"AC", "RICE"}
+    keys = {c["key"] for c in data["categories"]}
+    # AC and rice have their own priced flows; GENERAL accepts anything else.
+    assert keys == {"AC", "RICE", "GENERAL"}
+    assert keys == set(catalog.CATEGORIES), "the API must expose the whole registry"
 
 
 # --------------------------------------------------------------------------- #

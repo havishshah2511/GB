@@ -202,20 +202,32 @@ def price_facts(group: dict[str, Any], customer_qty: float = 0) -> dict[str, Any
     p = for_group(group, customer_qty)
     qty = float(group.get("strong_intent_qty") or 0)
 
+    # An open product is counted in whatever the customer named (kg, boxes...),
+    # stored on the group so every message uses the same word.
+    unit = (spec_of(group).get("unit") or "").strip() or category.unit
+
     facts: dict[str, Any] = {
         "group_code": group["code"],
         "group_label": group_label(group),
         "city": group["city"],
         "product": category.spec_description(spec_of(group)),
-        "unit": category.unit,
+        "unit": unit,
         "group_quantity": qty,
-        "group_quantity_text": category.qty_label(qty),
+        "group_quantity_text": category.qty_label(qty, unit),
         "your_quantity": customer_qty,
-        "your_quantity_text": category.qty_label(customer_qty) if customer_qty else "",
+        "your_quantity_text": category.qty_label(customer_qty, unit) if customer_qty else "",
         "has_pricing": p["has_pricing"],
         "price_confirmed": p.get("supplier_price_confirmed", False),
+        "buyers": int(group.get("customers") or 0),
     }
     if not p["has_pricing"]:
+        # No supplier has quoted for this product yet. Say so plainly rather
+        # than implying a price exists.
+        facts["pricing_status"] = "awaiting_quote"
+        facts["pricing_note"] = (
+            "We're pooling demand for this product now. As soon as we have "
+            "enough quantity we'll get a supplier quote and message you the price."
+        )
         return facts
 
     facts.update(

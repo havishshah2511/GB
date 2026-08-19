@@ -264,6 +264,12 @@ table.slabs.mine td:last-child { text-align: right; font-weight: 600; }
   background: var(--brand-soft); color: var(--brand-ink); margin-left: 6px;
 }
 .indicative { color: var(--ink-soft); font-size: 12px; margin-top: 8px; }
+.pending-quote {
+  margin-top: 12px; padding: 12px 14px; border-radius: 12px;
+  background: var(--accent-soft); border: 1px dashed var(--accent);
+}
+.pending-quote strong { display: block; color: var(--accent); font-size: 15px; }
+.pending-quote span { display: block; margin-top: 4px; font-size: 13px; color: var(--ink-soft); }
 
 /* ---------------- share ---------------- */
 .sharebox { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }

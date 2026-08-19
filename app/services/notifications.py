@@ -92,7 +92,7 @@ def queue(
     # `dedupe_key` still guarantees one message per member per slab.
     if (
         customer_id and group_id
-        and kind not in ("admin_broadcast", "price_drop")
+        and kind not in ("admin_broadcast", "price_drop", "price_available")
         and _over_rate_limit(customer_id, group_id)
     ):
         log.debug("rate limited: %s / %s / %s", customer_id, group_id, kind)
@@ -320,9 +320,41 @@ def _progress_percent(group: dict[str, Any]) -> int | None:
     return int(round(100 * (qty - float(floor)) / (float(target) - float(floor))))
 
 
+def price_available_message(group: dict[str, Any], member: dict[str, Any]) -> str:
+    """First price on a product that had none -- the payoff for everyone who
+    joined an open-ended group on trust."""
+    category = catalog.require(group["product_category"])
+    qty = float(member.get("quantity") or 0)
+    facts = pricing.price_facts(group, qty)
+    name = member.get("customer_name") or "there"
+    lines = [
+        "💰 Your group has a price!",
+        "",
+        f"Good news, {name}. We took your {facts['group_label']} group's pooled "
+        f"demand to suppliers and have a group price.",
+        "",
+        f"Group quantity: {facts['group_quantity_text']}",
+        f"Group price: {facts['current_price_text']} per {facts['unit']}",
+    ]
+    if qty:
+        lines.append(f"Your requirement: {facts['your_quantity_text']}")
+    if facts.get("next_target_qty"):
+        lines += [
+            "",
+            f"It gets better at {facts['next_target_text']} — only {facts['gap_text']} more "
+            f"and the price drops to {facts['next_price_text']}.",
+            "Know someone who needs the same? Share this 👇",
+            _share_line(group, member["customer_id"]),
+        ]
+    if not group.get("supplier_price_confirmed"):
+        lines += ["", "(Indicative — final rate confirmed once the supplier quote is locked.)"]
+    return "\n".join(lines)
+
+
 def on_group_changed(group: dict[str, Any], before: dict[str, Any],
                      price_dropped: bool,
-                     exclude_intent_id: str | None = None) -> list[dict[str, Any]]:
+                     exclude_intent_id: str | None = None,
+                     price_appeared: bool = False) -> list[dict[str, Any]]:
     """Called by groups.recalculate(). Decides which members hear about it."""
     from . import groups as groups_service
 
@@ -334,6 +366,19 @@ def on_group_changed(group: dict[str, Any], before: dict[str, Any],
         return []
 
     queued: list[dict[str, Any]] = []
+
+    if price_appeared:
+        for member in members:
+            note = queue(
+                member["customer_id"], group["id"], "price_available",
+                price_available_message(group, member),
+                intent_id=member["id"],
+                payload={"slab": _slab_key(group)},
+                dedupe_key=f"price_available:{group['id']}:{member['customer_id']}",
+            )
+            if note:
+                queued.append(note)
+        return queued
 
     if price_dropped:
         for member in members:

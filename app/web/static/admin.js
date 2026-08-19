@@ -178,8 +178,10 @@
         <td class="num">${num(q.total_intent_qty)}</td>
         <td class="num"><strong>${num(q.strong_intent_qty)}</strong></td>
         <td class="num">${num(q.confirmed_qty)}</td>
-        <td class="num">${money(p.current_price)}
-            ${p.price_status === "supplier_confirmed" ? '<span class="tag ok">confirmed</span>' : ""}</td>
+        <td class="num">${p.current_price == null
+          ? '<span class="tag warn">needs quote</span>'
+          : money(p.current_price) + (p.price_status === "supplier_confirmed"
+              ? ' <span class="tag ok">confirmed</span>' : "")}</td>
         <td class="num">${p.next_slab_qty ? num(p.next_slab_qty) + " → " + money(p.next_price) : "top slab"}</td>
         <td class="num">${g.gap_to_next_price != null
           ? `<strong class="pending">${num(g.gap_to_next_price)}</strong>
@@ -219,7 +221,9 @@
       // product. Groups already on their cheapest slab contribute nothing.
       const open = list.filter((g) => g.gap_to_next_price != null);
       const pending = sum(open, (g) => g.gap_to_next_price);
-      const atTop = list.length - open.length;
+      // Open-ended products start unpriced; those need an operator, not a nudge.
+      const unpriced = list.filter((g) => g.pricing.current_price == null).length;
+      const atTop = list.length - open.length - unpriced;
 
       const stats = `
         <div class="prodstats">
@@ -230,6 +234,8 @@
           ${stat("Confirmed", qty(sum(list, (g) => g.quantity.confirmed_qty), u))}
           ${stat("Pending to close next price", open.length ? qty(pending, u) : "—",
                  open.length ? "accent" : "", atTop ? `${atTop} at best price` : "")}
+          ${unpriced ? stat("Awaiting supplier quote", `${unpriced} group${unpriced === 1 ? "" : "s"}`,
+                            "accent", "open a group to add price slabs") : ""}
         </div>`;
 
       return `<div class="panel prod" data-category="${esc(key)}">

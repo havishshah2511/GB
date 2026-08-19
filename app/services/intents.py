@@ -136,7 +136,7 @@ def summarise_for_customer(intent: dict[str, Any]) -> str:
     """One-line description used in chat and on the status page."""
     category = catalog.get(intent["category"])
     qty = float(intent.get("quantity") or 0)
-    qty_text = category.qty_label(qty) if category else f"{qty:g}"
+    qty_text = category.qty_label(qty, intent.get("unit")) if category else f"{qty:g}"
     where = intent.get("city") or ""
     product = intent.get("product") or (category.label if category else intent["category"])
     return f"{qty_text} · {product}" + (f" · {where}" if where else "")
@@ -166,6 +166,8 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
         for name in (s.name for s in category.slots)
         if state.get(name) not in (None, "", [])
     }
+    if category.open_ended and (state.get("unit") or "").strip():
+        spec["unit"] = state["unit"].strip()
     desired = parse_date(state.get("desired_purchase_date"))
     maximum = parse_date(state.get("maximum_purchase_date")) or desired
     quantity = to_float(state.get("quantity"), 0) or 0.0
@@ -181,7 +183,7 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
         "product": category.spec_description(spec),
         "specifications_json": dumps(spec),
         "quantity": quantity,
-        "unit": category.unit,
+        "unit": (state.get("unit") or "").strip() or category.unit,
         "area": state.get("area"),
         "city": state.get("city"),
         "earliest_purchase_date": str(earliest) if earliest else None,

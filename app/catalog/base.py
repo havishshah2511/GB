@@ -9,6 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from ..utils import normalise_product
+
+#: Units that read the same at any quantity ("1 kg", "100 kg").
+_INVARIANT_UNITS = {"kg", "litre", "ml", "ton", "quintal", "metre", "ft", "sq ft"}
+
 
 @dataclass(frozen=True)
 class Slot:
@@ -29,6 +34,10 @@ class Slot:
     ask_if: Callable[[dict[str, Any]], bool] | None = None
     # Free-text answers are accepted for this slot even if chips are offered.
     freeform: bool = False
+    # How long a free-text answer may be. Product names need more room than a
+    # brand ("recycled packaging boxes 12x12" vs "Daikin").
+    max_words: int = 3
+    max_chars: int = 30
     help_text: str = ""
 
     def display_label(self) -> str:
@@ -76,6 +85,10 @@ class Category:
     # Noun used when naming the product ("1.5 Ton Split Inverter **AC**",
     # "Basmati Premium **Rice**"). Defaults to the counting unit.
     product_noun: str = ""
+    # An open category has no fixed product list: the customer names the
+    # product and it is normalised into the grouping key. Such groups start
+    # with no price slabs -- quantity pools while an operator negotiates.
+    open_ended: bool = False
 
     def noun(self) -> str:
         return self.product_noun or self.unit
@@ -122,10 +135,20 @@ class Category:
                 resolved.pop(name, None)
         return resolved
 
+    def canonical(self, value: str | None) -> str:
+        """The comparable form of a grouping value. Open categories normalise
+        free text so "2 Office Chairs!" and "office chair" are one group."""
+        if value is None:
+            return ""
+        if self.open_ended:
+            return normalise_product(value)
+        return str(value).strip().lower()
+
     def signature(self, spec: dict[str, Any]) -> str:
         parts = [self.key]
         for name in self.grouping_fields:
-            parts.append((self.grouping_value(spec, name) or "any").lower().replace(" ", "_"))
+            value = self.canonical(self.grouping_value(spec, name)) or "any"
+            parts.append(value.replace(" ", "_"))
         return "|".join(parts)
 
     def product_key(self, spec: dict[str, Any]) -> str:
@@ -144,12 +167,26 @@ class Category:
     def spec_description(self, spec: dict[str, Any]) -> str:
         """Short human string, e.g. '1.5 Ton Split Inverter AC'."""
         bits = [self.grouping_value(spec, name) for name in self.grouping_fields]
-        return " ".join([b for b in bits if b] + [self.noun()]).strip()
+        bits = [b for b in bits if b]
+        if self.open_ended:
+            # Label by the canonical product, not by whichever buyer happened to
+            # create the group -- "good quality Office Chairs" would otherwise
+            # name a group that also holds plain "office chair" buyers.
+            # The product name IS the noun here; appending "unit" would give
+            # "Office Chair unit".
+            return " ".join(self.canonical(b).title() for b in bits if self.canonical(b)).strip()
+        return " ".join(bits + [self.noun()]).strip()
 
-    def qty_label(self, qty: float) -> str:
+    def qty_label(self, qty: float, unit: str | None = None) -> str:
+        """`unit` overrides the category default -- an open product is counted
+        in whatever the customer named (kg, boxes, litres...)."""
         qty_str = f"{qty:g}"
-        if self.unit == "kg":
-            return f"{qty_str} kg"
+        counted = (unit or "").strip() or self.unit
+        # Mass/volume/measure units are already plural-neutral ("100 kg").
+        if counted != self.unit or counted in _INVARIANT_UNITS:
+            return f"{qty_str} {counted}"
+        if self.unit in _INVARIANT_UNITS:
+            return f"{qty_str} {self.unit}"
         return f"{qty_str} {self.unit if qty == 1 else self.unit_plural}"
 
     def slabs_for(self, spec: dict[str, Any]) -> tuple[Slab, ...]:

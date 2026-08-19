@@ -12,12 +12,17 @@ from typing import Any
 
 from .base import Category, Slab, Slot
 
-_MODULES = ("ac", "rice")
+#: Order matters: it is the order of the opening chips, and the open-ended
+#: fallback must come last.
+_MODULES = ("ac", "rice", "general")
 
 CATEGORIES: dict[str, Category] = {}
 for _name in _MODULES:
     _cat = importlib.import_module(f"{__name__}.{_name}").CATEGORY
     CATEGORIES[_cat.key] = _cat
+
+#: The category used when a product matches no specific one.
+FALLBACK_KEY = next((c.key for c in CATEGORIES.values() if c.open_ended), None)
 
 _TRIGGERS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(pattern, re.I), cat.key)
@@ -43,14 +48,40 @@ def all_categories() -> list[Category]:
     return list(CATEGORIES.values())
 
 
-def detect(text: str) -> str | None:
-    """Route free text to a category key."""
+def detect(text: str, allow_fallback: bool = False) -> str | None:
+    """Route free text to a category key.
+
+    `allow_fallback` returns the open-ended category for anything that names a
+    product we have no dedicated flow for. It is off by default so that a
+    greeting or an off-topic question is not mistaken for a product.
+    """
     if not text:
         return None
     for pattern, key in _TRIGGERS:
         if pattern.search(text):
             return key
+    if allow_fallback and FALLBACK_KEY and looks_like_a_product(text):
+        return FALLBACK_KEY
     return None
+
+
+#: Messages that are conversation, not a product.
+_NOT_A_PRODUCT = re.compile(
+    r"^\s*(hi|hey|hello|yo|ok|okay|yes|no|thanks|thank you|sure|hmm|what|why|how|"
+    r"who|when|where|help|test|testing)\b\W*$",
+    re.I,
+)
+
+
+def looks_like_a_product(text: str) -> bool:
+    """Cheap guard before treating free text as a product name."""
+    from ..utils import normalise_product
+
+    stripped = (text or "").strip()
+    if len(stripped) < 2 or _NOT_A_PRODUCT.match(stripped):
+        return False
+    # After stripping quantities, units and filler there must be a noun left.
+    return bool(normalise_product(stripped))
 
 
 def quick_options() -> list[dict[str, str]]:
@@ -74,6 +105,7 @@ def describe(category_key: str, spec: dict[str, Any]) -> str:
 
 
 __all__ = [
-    "Category", "Slab", "Slot", "CATEGORIES", "get", "require", "all_categories",
-    "detect", "quick_options", "slot_labels", "describe",
+    "Category", "Slab", "Slot", "CATEGORIES", "FALLBACK_KEY", "get", "require",
+    "all_categories", "detect", "looks_like_a_product", "quick_options",
+    "slot_labels", "describe",
 ]

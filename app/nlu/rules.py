@@ -15,7 +15,7 @@ from typing import Any
 
 from .. import catalog
 from ..db import today
-from ..utils import clean_name, normalise_mobile, to_float
+from ..utils import clean_name, detect_unit, normalise_mobile, normalise_product, to_float
 
 # --------------------------------------------------------------------------- #
 # vocabularies
@@ -165,6 +165,21 @@ def extract_quantity(text: str, category: catalog.Category | None) -> float | No
                 value = to_float(match.group(1))
                 if value:
                     return value * multiplier
+        # An open category has no per-product patterns, so read the leading
+        # number: "50 office chairs", "100 kg cement", "I need 20 boxes".
+        if category.open_ended:
+            match = re.search(
+                r"(?:^|\b)(\d{1,7}(?:\.\d+)?)\s*"
+                r"(?:kgs?|kilos?|gm?s?|tons?|tonnes?|l|ltrs?|litres?|liters?|ml|"
+                r"box(?:es)?|bags?|packets?|packs?|pcs?|pieces?|nos?|units?|dozen|"
+                r"sets?|pairs?|rolls?|sheets?|metres?|meters?|mtrs?|ft|feet)?\s+"
+                r"(?:of\s+)?[a-z]",
+                lowered, re.I,
+            )
+            if match:
+                value = to_float(match.group(1))
+                if value:
+                    return value
     for word, value in _QTY_WORDS.items():
         if re.search(rf"\b{re.escape(word)}\b", lowered):
             if category and category.unit == "kg" and value < 25:
@@ -343,6 +358,33 @@ def match_choice(text: str, slot: catalog.Slot) -> str | None:
 # --------------------------------------------------------------------------- #
 # message-level intent
 # --------------------------------------------------------------------------- #
+#: Leading phrases customers open with, stripped before reading the product.
+_PRODUCT_LEAD = re.compile(
+    r"^\s*(?:i\s+)?(?:need|want|require|am\s+looking\s+for|looking\s+for|"
+    r"would\s+like|planning\s+to\s+buy|want\s+to\s+buy|buy|order|get|"
+    r"searching\s+for|interested\s+in)\b[\s:,-]*",
+    re.I,
+)
+
+
+def product_name_from(text: str) -> str | None:
+    """The product a free-text message is about, kept in the customer's own
+    words. Normalisation for grouping happens separately."""
+    cleaned = _PRODUCT_LEAD.sub("", (text or "").strip())
+    # Drop a leading quantity and its unit: "100 kg cement" -> "cement".
+    cleaned = re.sub(
+        r"^\d+(?:\.\d+)?\s*(?:kg|kgs|gm|g|ton|tonnes?|l|ltr|litres?|liters?|ml|"
+        r"box(?:es)?|bags?|packets?|packs?|pcs|pieces?|nos|units?|dozen|sets?|"
+        r"pairs?|rolls?|sheets?)?\s*(?:of\s+)?",
+        "", cleaned, flags=re.I,
+    ).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,-;:!?")
+    if not cleaned or not normalise_product(cleaned):
+        return None
+    # Keep it a name, not a sentence.
+    return " ".join(cleaned.split()[:6])
+
+
 def detect_command(text: str) -> str | None:
     """A steering instruction rather than an answer to the current question.
 
@@ -401,10 +443,23 @@ def extract(text: str, state: dict[str, Any], expecting: str | None = None) -> d
 
     # --- product routing ---------------------------------------------------
     if not category:
-        detected = catalog.detect(text)
+        # Free text only falls through to the open-ended category when the bot
+        # actually asked what they want to buy -- otherwise "hello" would
+        # become a product.
+        allow_fallback = expecting in ("category", "product_name")
+        detected = catalog.detect(text, allow_fallback=allow_fallback)
         if detected:
             found["category"] = detected
             category = catalog.get(detected)
+
+    # An open category takes its product name straight from what they typed.
+    if category is not None and category.open_ended and not state.get("product_name"):
+        name = product_name_from(text)
+        if name:
+            found["product_name"] = name
+            unit = detect_unit(text)
+            if unit:
+                found["unit"] = unit
 
     slots = {s.name: s for s in category.slots} if category else {}
 
@@ -555,7 +610,8 @@ def _extract_for_slot(
     if value is not None:
         return {slot_name: value}
     if slot.freeform:
-        cleaned = re.sub(r"[^A-Za-z0-9\s\-&']", " ", text).strip()
-        if 1 < len(cleaned) <= 30 and len(cleaned.split()) <= 3:
+        cleaned = re.sub(r"[^A-Za-z0-9\s\-&'/x]", " ", text).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        if 1 < len(cleaned) <= slot.max_chars and len(cleaned.split()) <= slot.max_words:
             return {slot_name: cleaned.title()}
     return None

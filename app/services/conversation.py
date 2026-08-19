@@ -257,13 +257,29 @@ def next_question(state: dict[str, Any]) -> Question | None:
 
     category = catalog.require(state["category"])
 
+    # For an open category "the product" is whatever they name, so ask that
+    # before anything else -- "How many do you need?" is meaningless first.
+    if category.open_ended and not _slot_filled(state, "product_name"):
+        slot = next(s for s in category.slots if s.name == "product_name")
+        return Question(
+            slot="product_name",
+            text=slot.question,
+            placeholder="e.g. cement, LED bulbs, packaging boxes",
+        )
+
     # The mobile number comes straight after the product so we can recognise a
     # returning buyer before putting them through the whole flow again.
     if not _slot_filled(state, "mobile"):
+        # Name what they actually asked for; "Sure — something else" is nonsense.
+        what = (
+            str(state.get("product_name")).strip().lower()
+            if category.open_ended and state.get("product_name")
+            else category.label.lower()
+        )
         return Question(
             slot="mobile",
             text=(
-                f"Sure — {category.label.lower()} 👍\n\nWhat's your mobile number?\n\n"
+                f"Sure — {what} 👍\n\nWhat's your mobile number?\n\n"
                 "We'll use it to check if you already have a request with us, and to "
                 "message you when your group price improves."
             ),
@@ -885,7 +901,7 @@ def acknowledgement(state: dict[str, Any], changed: list[str]) -> str | None:
         counter = f"{qty:g} kg of" if category.unit == "kg" else f"{qty:g} ×"
         return f"Got it — {counter} {spec}."
     if qty:
-        return f"Got it — {category.qty_label(qty)}."
+        return f"Got it — {category.qty_label(qty, state.get('unit'))}."
     if spec:
         return f"Got it — {spec}."
     return None
@@ -899,7 +915,7 @@ def summary(state: dict[str, Any]) -> dict[str, Any]:
         "category_label": category.label if category else None,
         "product": category.spec_description(state) if category else None,
         "quantity": state.get("quantity"),
-        "quantity_text": category.qty_label(to_float(state.get("quantity"), 0) or 0)
+        "quantity_text": category.qty_label(to_float(state.get("quantity"), 0) or 0, state.get("unit"))
         if category and state.get("quantity") else None,
         "city": state.get("city"),
         "area": state.get("area"),
@@ -1265,16 +1281,17 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
     messages: list[dict[str, Any]] = []
 
     if result["group_created"]:
-        messages.append(
-            {
-                "role": "bot",
-                "text": (
-                    f"You're the first buyer in a new **{facts['group_label']}** group 🚀\n\n"
-                    f"Your {facts['your_quantity_text']} is now the starting quantity. As more "
-                    f"buyers with matching requirements join, the price drops for everyone."
-                ),
-            }
+        opener = (
+            f"You're the first buyer in a new **{facts['group_label']}** group 🚀\n\n"
+            f"Your {facts['your_quantity_text']} is now the starting quantity."
         )
+        opener += (
+            " As more buyers with matching requirements join, we'll take the pooled "
+            "quantity to suppliers and get you a group price."
+            if not facts.get("has_pricing")
+            else " As more buyers with matching requirements join, the price drops for everyone."
+        )
+        messages.append({"role": "bot", "text": opener})
     else:
         messages.append(
             {
@@ -1288,6 +1305,10 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
         )
 
     messages.append({"role": "bot", "card": _group_card(group, qty)})
+
+    # A product nobody has quoted for yet: say so instead of implying a price.
+    if not facts.get("has_pricing"):
+        messages.append({"role": "bot", "text": facts["pricing_note"]})
 
     target_card = _next_target_card(group, qty)
     if target_card:
@@ -1442,7 +1463,7 @@ def live_updates(session_id: str, base_url: str = "") -> dict[str, Any]:
             }
         )
     else:
-        who = f"**{category.qty_label(added)}**" if added > 0 else "A new requirement"
+        who = f"**{category.qty_label(added, facts.get('unit'))}**" if added > 0 else "A new requirement"
         messages.append(
             {
                 "role": "bot",

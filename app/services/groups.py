@@ -98,6 +98,10 @@ def create(
     # Only the product-defining fields live on the group; per-buyer preferences
     # (budget, installation, usage...) stay on the intent.
     group_spec = {f: resolved_spec[f] for f in category.grouping_fields if resolved_spec.get(f)}
+    # An open product is counted in the customer's own unit, so it travels with
+    # the group and every message uses the same word.
+    if category.open_ended and resolved_spec.get("unit"):
+        group_spec["unit"] = resolved_spec["unit"]
     brand = category.brand_of(resolved_spec)
     if match_mode == "exact" and brand:
         group_spec["brand"] = brand
@@ -217,11 +221,15 @@ def recalculate(group_id: str, notify: bool = True,
         and after["current_price"] is not None
         and after["current_price"] < before["current_price"]
     )
+    # An open product starts with no price at all. The moment an operator loads
+    # a supplier's slabs, everyone pooled into it needs to hear about it.
+    price_appeared = before["current_price"] is None and after["current_price"] is not None
     result = {
         "group": after,
         "before": before,
         "price_changed": before["current_price"] != after["current_price"],
         "price_dropped": price_dropped,
+        "price_appeared": price_appeared,
         "quantity_changed": before["strong_intent_qty"] != after["strong_intent_qty"],
         "customers": agg["customers"],
         "strong_customers": agg["strong_customers"],
@@ -232,7 +240,8 @@ def recalculate(group_id: str, notify: bool = True,
         from . import notifications  # local import avoids a cycle
 
         result["notifications"] = notifications.on_group_changed(
-            after, before, price_dropped, exclude_intent_id=trigger_intent_id
+            after, before, price_dropped, exclude_intent_id=trigger_intent_id,
+            price_appeared=price_appeared,
         )
     return result
 

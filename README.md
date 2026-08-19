@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 201 tests
+python -m pytest        # 236 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -305,6 +305,46 @@ generated are all tracked, and the referrer is notified when their invite lands.
 
 ---
 
+## Any product
+
+AC and rice have negotiated slab tables. Everything else goes through the
+**open-ended** category: the customer names the product in their own words and
+buyers wanting the same thing in the same city pool together.
+
+```
+"I need 50 office chairs"              ┐
+"looking for good quality Office Chair" ┘ → one group, 80 units
+```
+
+Grouping is by a normalised key, so phrasing does not fragment demand:
+quantities, units, punctuation and filler adjectives are stripped and each word
+singularised — `2 Office Chairs!`, `office chair` and `good quality OFFICE
+CHAIRS` all become `office chair`. The group is labelled from that canonical
+form, not from whoever created it. Quantity is counted in the customer's own
+unit (`100 kg cement`, `50 boxes`, `20 litres`).
+
+### An open group starts with no price, and says so
+
+Nobody has quoted for a product we have never bought. Rather than invent a
+number, the group collects quantity and the chat is explicit:
+
+> **Price: being negotiated**
+> We're pooling demand for this product now. As soon as we have enough quantity
+> we'll get a supplier quote and message you the price.
+
+No price, no next target, no savings — `price_facts()` omits those keys entirely
+when a group has no slabs, so there is nothing for a language model to echo.
+
+The back office flags these groups as **needs quote**. When an operator loads
+the supplier's slabs (`PUT /api/admin/groups/{id}/slabs`), `recalculate()`
+reports `price_appeared` and every pooled member is messaged — bypassing the
+daily notification cap, because it is the payoff for joining on trust.
+
+A product that outgrows this — enough volume to be worth a dedicated flow with
+its own questions and standing slab table — graduates to its own module.
+
+---
+
 ## Adding a product category
 
 Create one module in `app/catalog/` exposing a `CATEGORY`, and add its name to
@@ -459,6 +499,7 @@ tests/test_returning_customer.py  recognition, status page, live merge updates
 tests/test_commands.py       cancel / show-past / change-product / exit, mid-flow
 tests/test_window_matching.py  deadline semantics, pooling, no dead-end loops
 tests/test_consolidation.py  auto-merge sweep, what must never be pooled
+tests/test_open_products.py  any-product pooling, unpriced-group honesty
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations
 tests/test_end_to_end.py     the full loop, asserted against the spec's numbers

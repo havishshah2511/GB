@@ -60,6 +60,26 @@
 
   // ------------------------------------------------------------------ cards
   function groupCard(c) {
+    // A product nobody has quoted for yet shows pooled demand, never a price.
+    if (!c.has_pricing) {
+      return addCard(`<div class="card">
+        <h3>Current group</h3>
+        <div class="label">${esc(c.group_label)}</div>
+        <div class="stat">
+          <div class="k">Buyers together need</div>
+          <div class="v">${esc(c.group_quantity_text)}</div>
+        </div>
+        ${c.your_quantity_text ? `<div class="stat">
+          <div class="k">Your requirement</div>
+          <div class="v">${esc(c.your_quantity_text)}</div>
+        </div>` : ""}
+        <div class="pending-quote">
+          <strong>Price: being negotiated</strong>
+          <span>${esc(c.pricing_note || "")}</span>
+        </div>
+      </div>`);
+    }
+
     const confirmed = c.price_confirmed
       ? '<span class="confirmed">Supplier confirmed</span>'
       : '<p class="indicative">Indicative group price — confirmed once the supplier quote is locked.</p>';
