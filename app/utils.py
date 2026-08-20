@@ -136,6 +136,9 @@ def normalise_product(raw: str | None) -> str:
     if not raw:
         return ""
     text = str(raw).lower()
+    # Slashed abbreviations people type interchangeably with the plain form.
+    text = re.sub(r"\ba\s*/\s*c\b", "ac", text)
+    text = re.sub(r"\bc\s*/\s*w\b", "cw", text)
     text = re.sub(r"[^a-z0-9\s\-/&]+", " ", text)
     text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:kg|kgs|gm|gms|g|ton|tonne|tons|l|ltr|litre|"
                   r"liters?|ml|mtr|meter|metres?|ft|feet|inch|in|box|boxes|bag|bags|"

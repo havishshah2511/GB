@@ -159,8 +159,19 @@ CATEGORY = Category(
     default_slab_key="AC|1.5_ton|split|inverter",
     grouping_defaults={"capacity": "1.5 Ton", "ac_type": "Split", "inverter": "Inverter"},
     triggers=(
-        r"\ba\.?\s?c\.?\b", r"\bacs\b", r"\bair\s*condition", r"\baircon\b",
+        r"\ba[./]?\s?c\.?\b", r"\bacs\b", r"\bair\s*condition", r"\baircon\b",
         r"\bsplit\s*ac\b", r"\bwindow\s*ac\b", r"\bcooling\b",
+    ),
+    # This flow asks split-or-window and prices off the split-AC slab tables.
+    # Every other kind of air conditioning is a different purchase, quoted
+    # differently, so it goes to the open-ended category instead of being
+    # forced through questions that do not apply and priced off the wrong
+    # table. Add slabs and options here when one is worth its own flow.
+    exclusions=(
+        r"\bcassette\b", r"\bductable\b", r"\bducted\b", r"\bvrf\b", r"\bvrv\b",
+        r"\bpackage[d]?\s*ac\b", r"\btower\s*ac\b", r"\bfloor[\s-]*stand",
+        r"\bprecision\b", r"\bindustrial\b", r"\bportable\b", r"\bchiller\b",
+        r"\bahu\b", r"\bfcu\b", r"\bcold\s*room\b",
     ),
     # A number is a quantity only when it is NOT immediately followed by a spec
     # unit (ton / star), and it may sit a few words ahead of the product noun:

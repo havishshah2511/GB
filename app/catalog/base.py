@@ -75,6 +75,12 @@ class Category:
     grouping_defaults: dict[str, str] = field(default_factory=dict)
     # words/regex that route a free-text message to this category
     triggers: tuple[str, ...] = ()
+    # Regexes that VETO a trigger match. A dedicated flow should only claim the
+    # products it can actually ask about and price -- "cassette AC" matches the
+    # AC trigger but the AC flow only knows split and window units, and there
+    # are no slabs for a cassette. Vetoed text falls through to the open-ended
+    # category, where it pools by product name and waits for a real quote.
+    exclusions: tuple[str, ...] = ()
     # (regex capturing a number, multiplier to convert into `unit`)
     quantity_patterns: tuple[tuple[str, float], ...] = ()
     min_group_quantity: int = 1
@@ -137,11 +143,19 @@ class Category:
 
     def canonical(self, value: str | None) -> str:
         """The comparable form of a grouping value. Open categories normalise
-        free text so "2 Office Chairs!" and "office chair" are one group."""
+        free text so "2 Office Chairs!" and "office chair" are one group.
+
+        Where the taxonomy recognises the product, its catalogue name wins:
+        "cassette a/c" and "Cassette AC" then pool, while a cassette and a
+        split AC — different purchases, quoted differently — stay apart.
+        """
         if value is None:
             return ""
         if self.open_ended:
-            return normalise_product(value)
+            from .taxonomy import match as taxonomy_match
+
+            found = taxonomy_match(value)
+            return found.key if found else normalise_product(value)
         return str(value).strip().lower()
 
     def signature(self, spec: dict[str, Any]) -> str:
@@ -169,12 +183,14 @@ class Category:
         bits = [self.grouping_value(spec, name) for name in self.grouping_fields]
         bits = [b for b in bits if b]
         if self.open_ended:
-            # Label by the canonical product, not by whichever buyer happened to
-            # create the group -- "good quality Office Chairs" would otherwise
-            # name a group that also holds plain "office chair" buyers.
-            # The product name IS the noun here; appending "unit" would give
-            # "Office Chair unit".
-            return " ".join(self.canonical(b).title() for b in bits if self.canonical(b)).strip()
+            # Label by the catalogue's wording where it knows the product, so a
+            # group reads "Cassette AC" rather than whatever the first buyer
+            # happened to type. The product name IS the noun here; appending
+            # "unit" would give "Office Chair unit".
+            from .taxonomy import canonical_product
+
+            named = [canonical_product(b) for b in bits]
+            return " ".join(n.title() if n.islower() else n for n in named if n).strip()
         return " ".join(bits + [self.noun()]).strip()
 
     def qty_label(self, qty: float, unit: str | None = None) -> str:

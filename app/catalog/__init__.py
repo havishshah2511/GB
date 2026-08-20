@@ -29,6 +29,10 @@ _TRIGGERS: list[tuple[re.Pattern[str], str]] = [
     for cat in CATEGORIES.values()
     for pattern in cat.triggers
 ]
+_EXCLUSIONS: dict[str, list[re.Pattern[str]]] = {
+    cat.key: [re.compile(p, re.I) for p in cat.exclusions]
+    for cat in CATEGORIES.values()
+}
 
 
 def get(key: str | None) -> Category | None:
@@ -59,6 +63,10 @@ def detect(text: str, allow_fallback: bool = False) -> str | None:
         return None
     for pattern, key in _TRIGGERS:
         if pattern.search(text):
+            # A dedicated flow may decline a product it cannot price or ask
+            # about; it then falls through to the open-ended category.
+            if any(veto.search(text) for veto in _EXCLUSIONS.get(key, ())):
+                continue
             return key
     if allow_fallback and FALLBACK_KEY and looks_like_a_product(text):
         return FALLBACK_KEY

@@ -95,7 +95,8 @@ def test_any_product_can_start_a_group(chat):
     intent = intents.get_full(reply["summary"]["intent_id"])
     assert intent["category"] == "GENERAL"
     assert intent["quantity"] == 50
-    assert "Office Chair" in intent["product"]
+    # Named from the product catalogue, not from what the buyer typed.
+    assert intent["product"] == "Office chairs"
 
 
 def test_two_phrasings_of_one_product_pool_together(chat):
@@ -112,7 +113,8 @@ def test_two_phrasings_of_one_product_pool_together(chat):
 def test_the_group_is_labelled_by_the_canonical_product(chat):
     buy(chat, "o4", "looking for good quality Office Chairs", "Ravi", "9000000004")
     group = groups.list_groups()[0]
-    assert pricing.group_label(group) == "Vadodara – Office Chair"
+    # The catalogue's wording wins over "good quality Office Chairs".
+    assert pricing.group_label(group) == "Vadodara – Office chairs"
 
 
 def test_different_products_do_not_pool(chat):

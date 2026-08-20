@@ -57,10 +57,14 @@ MONTHS = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
 MONTHS.update({m.lower(): i for i, m in enumerate(calendar.month_name) if m})
 
 AFFIRMATIVE = re.compile(
-    r"\b(yes|yeah|yep|yup|sure|ok(ay)?|fine|correct|right|haan|ha|of course|definitely|absolutely)\b",
+    r"\b(yes|yeah|yep|yup|sure|ok(ay)?|fine|correct|right|of course|definitely|"
+    r"absolutely|haan|han|haa|ha|hn|ji|bilkul|theek|thik|sahi|accha|acha|chalega)\b",
     re.I,
 )
-NEGATIVE = re.compile(r"\b(no|nope|nah|not really|never|don'?t|nahi)\b", re.I)
+# "nahi chahiye" must read as no, so the negative is checked first everywhere.
+NEGATIVE = re.compile(
+    r"\b(no|nope|nah|not really|never|don'?t|nahi|nahin|nai|nhi|mat)\b", re.I
+)
 MAYBE = re.compile(r"\b(maybe|may be|perhaps|possibly|not sure|depends)\b", re.I)
 
 HELP_PATTERNS = re.compile(
@@ -81,12 +85,16 @@ STOP_PATTERNS = re.compile(r"\b(stop|not interested|no longer|remove me)\b", re.
 #: checked before slot extraction, so "cancel my request" can never be mistaken
 #: for an answer to "Split or Window?".
 CANCEL_PATTERNS = re.compile(
+    r"\bcancel kar|\bcancel karo|\bband karo|\bhata do|\bhatao|\bnahi chahiye|"
+    r"\bnahi lena|\brehne do|\bchhod do|"
     r"\b(cancel|delete|drop|withdraw|remove)\b[^.?!]{0,24}\b(request|order|requirement|intent|it|this|me)\b"
     r"|\bcancel\b(?!\s*(the\s*)?(link|share))"
     r"|\bnot interested\b|\bno longer (required|interested|needed)\b|\bremove me\b",
     re.I,
 )
 SHOW_PAST_PATTERNS = re.compile(
+    r"\bpurana order|\bpurani request|\bpichla order|\bmera order|\bmeri request|"
+    r"\border dikhao|\bstatus batao|\bkya status|"
     r"\b(show|see|view|check|open|display|what('?s| is)|track)\b[^.?!]{0,28}"
     r"\b(my|previous|past|old|earlier|existing)\b[^.?!]{0,18}"
     r"\b(request|order|requirement|status|booking)s?\b"
@@ -95,6 +103,7 @@ SHOW_PAST_PATTERNS = re.compile(
     re.I,
 )
 CHANGE_PRODUCT_PATTERNS = re.compile(
+    r"\bdusra product|\bdusra saman|\bkuch aur|\bkoi aur|\bbadal do|\bbadalna hai|"
     r"\bchange\b[^.?!]{0,20}\b(product|item|category|requirement|my mind)\b"
     r"|\b(different|another|other)\s+(product|item|thing|category)\b"
     r"|\bswitch\b[^.?!]{0,16}\b(product|to)\b"
@@ -102,6 +111,7 @@ CHANGE_PRODUCT_PATTERNS = re.compile(
     re.I,
 )
 EXIT_PATTERNS = re.compile(
+    r"\bbas itna|\bbas ho gaya|\bho gaya|\bthik hai bas|\bdhanyavad|\bshukriya|"
     r"\b(exit|quit|bye|goodbye|leave|log ?out|close (the )?chat|end (the )?chat)\b"
     r"|\b(i'?m|i am) done\b|\bthat'?s (all|it)\b|\bnothing else\b|\bno thanks\b",
     re.I,
@@ -111,7 +121,70 @@ _QTY_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9, "ten": 10, "a dozen": 12, "dozen": 12,
     "couple": 2, "half a ton": 500, "half ton": 500,
+    # --- Hinglish numerals, with the spellings people actually type ---------
+    "ek": 1, "do": 2, "teen": 3, "char": 4, "chaar": 4, "panch": 5, "paanch": 5,
+    "chhe": 6, "che": 6, "chah": 6, "saat": 7, "sat": 7, "aath": 8, "ath": 8,
+    "nau": 9, "no": 9, "das": 10, "dus": 10, "gyarah": 11, "barah": 12,
+    "pandrah": 15, "bees": 20, "bis": 20, "pachees": 25, "pachis": 25,
+    "tees": 30, "chalis": 40, "pachas": 50, "pachaas": 50, "sattar": 70,
+    "sau": 100, "do sau": 200, "teen sau": 300, "hazaar": 1000, "hazar": 1000,
+    "hajar": 1000, "darjan": 12,
 }
+
+# --------------------------------------------------------------------------- #
+# Hinglish
+# --------------------------------------------------------------------------- #
+# Customers type Hindi in Latin script and mix it freely with English:
+#   "mujhe 20 cassette AC chahiye Ahmedabad me, abhi lena hai"
+# Rather than a second engine, the same extractors learn the vocabulary. Each
+# spelling variant matters -- there is no standard transliteration.
+
+#: "I need / I want to buy", stripped before reading a product name.
+HINGLISH_WANT = re.compile(
+    r"\b(mujhe|muje|mujhko|hume|humein|hame|mereko)\b|"
+    r"\b(chahiye|chahie|chaiye|chahiy|cahiye|chahta hoon|chahta hu|chahti hoon)\b|"
+    r"\b(lena hai|leni hai|lene hai|kharidna hai|khareedna hai|kharidni hai|"
+    r"mangwana hai|mangana hai|order karna hai)\b",
+    re.I,
+)
+
+#: Units of counting.
+HINGLISH_UNITS = {
+    "kilo": "kg", "kilograam": "kg", "kg": "kg", "nag": "unit", "peti": "box",
+    "petiyan": "box", "bori": "bag", "boriyan": "bag", "thaila": "bag",
+    "darjan": "dozen", "quintal": "quintal", "ton": "ton", "litre": "litre",
+    "liter": "litre",
+}
+
+#: Timing words mapped to days, merged into _TIMING_CHIPS below.
+HINGLISH_TIMING = {
+    "abhi": 0, "turant": 0, "aaj": 0, "aj": 0, "foran": 0, "jaldi": 3,
+    "kal": 1, "parso": 2, "parson": 2,
+    "is hafte": 5, "is hafta": 5, "agle hafte": 7, "agle hafta": 7,
+    "hafte me": 7, "hafte mein": 7, "ek hafta": 7, "do hafte": 14,
+    "is mahine": 15, "is mahina": 15, "agle mahine": 30, "agle mahina": 30,
+    "mahine me": 30, "mahine mein": 30, "ek mahina": 30,
+}
+
+#: Questions about how the model works.
+HINGLISH_HELP = re.compile(
+    r"\b(ye kya hai|yeh kya hai|kya hai ye|kaise kaam|kaise work|"
+    r"kya scheme|samajh nahi|samjhao|batao kaise)\b",
+    re.I,
+)
+
+#: Price questions -- answered from backend facts, never invented.
+HINGLISH_PRICE = re.compile(
+    r"\b(kitna|kitne|kitni)\b.*\b(rate|price|paisa|paise|rupay|rupaye)\b|"
+    r"\b(bhav|daam|keemat|rate kya|price kya|kya rate|kya bhav)\b",
+    re.I,
+)
+
+HINGLISH_AFFIRM = (
+    r"haan|han|haa|ha|hn|ji|ji haan|bilkul|theek|thik|sahi|accha|acha|"
+    r"chalega|ok hai|kar do|karo"
+)
+HINGLISH_NEGATE = r"nahi|nahin|nai|na|mat|nhi|bilkul nahi|nahi chahiye"
 
 _TIMING_CHIPS = {
     "immediately": 0, "immediate": 0, "asap": 0, "right away": 0, "today": 0, "now": 0,
@@ -119,6 +192,7 @@ _TIMING_CHIPS = {
     "this week": 5, "next week": 7, "this month": 15, "next month": 30,
     "tomorrow": 1, "day after tomorrow": 2,
 }
+_TIMING_CHIPS.update(HINGLISH_TIMING)
 
 
 # --------------------------------------------------------------------------- #
@@ -158,6 +232,20 @@ def extract_area(text: str, city: str | None) -> str | None:
 
 def extract_quantity(text: str, category: catalog.Category | None) -> float | None:
     lowered = text.lower()
+
+    # "ek hazaar" is 1000, not 1, and "5 hazaar" is 5000, not 5. Multipliers
+    # bind to whatever precedes them, so this runs before any bare-number rule.
+    multiplier = re.search(
+        r"\b(\d+|[a-z]+)\s+(hazaar|hazar|hajar|sau|lakh)\b", lowered, re.I
+    )
+    if multiplier:
+        head = multiplier.group(1).lower()
+        base = to_float(head) if head.isdigit() else _QTY_WORDS.get(head)
+        scale = {"hazaar": 1000, "hazar": 1000, "hajar": 1000,
+                 "sau": 100, "lakh": 100000}[multiplier.group(2).lower()]
+        if base:
+            return float(base) * scale
+
     if category:
         for pattern, multiplier in category.quantity_patterns:
             match = re.search(pattern, lowered, re.I)
@@ -180,7 +268,9 @@ def extract_quantity(text: str, category: catalog.Category | None) -> float | No
                 value = to_float(match.group(1))
                 if value:
                     return value
-    for word, value in _QTY_WORDS.items():
+    # Longest phrase first, so "do sau" is not read as "do".
+    for word in sorted(_QTY_WORDS, key=len, reverse=True):
+        value = _QTY_WORDS[word]
         if re.search(rf"\b{re.escape(word)}\b", lowered):
             if category and category.unit == "kg" and value < 25:
                 continue
@@ -371,6 +461,8 @@ def product_name_from(text: str) -> str | None:
     """The product a free-text message is about, kept in the customer's own
     words. Normalisation for grouping happens separately."""
     cleaned = _PRODUCT_LEAD.sub("", (text or "").strip())
+    # "mujhe 20 cassette AC chahiye" -> "20 cassette AC"
+    cleaned = HINGLISH_WANT.sub(" ", cleaned).strip()
     # Drop a leading quantity and its unit: "100 kg cement" -> "cement".
     cleaned = re.sub(
         r"^\d+(?:\.\d+)?\s*(?:kg|kgs|gm|g|ton|tonnes?|l|ltr|litres?|liters?|ml|"
@@ -412,7 +504,7 @@ def detect_message_intent(text: str) -> str | None:
         return command
     if READY_PATTERNS.search(text):
         return "ready_to_buy"
-    if HELP_PATTERNS.search(text):
+    if HELP_PATTERNS.search(text) or HINGLISH_HELP.search(text):
         return "explain"
     if STOP_PATTERNS.search(text):
         return "cancel"
@@ -609,9 +701,23 @@ def _extract_for_slot(
     value = match_choice(text, slot)
     if value is not None:
         return {slot_name: value}
-    if slot.freeform:
+    if slot.freeform and not _belongs_elsewhere(text):
         cleaned = re.sub(r"[^A-Za-z0-9\s\-&'/x]", " ", text).strip()
         cleaned = re.sub(r"\s+", " ", cleaned)
         if 1 < len(cleaned) <= slot.max_chars and len(cleaned.split()) <= slot.max_words:
             return {slot_name: cleaned.title()}
     return None
+
+
+def _belongs_elsewhere(text: str) -> bool:
+    """Is this answer clearly meant for a different slot?
+
+    A free-text slot accepts almost anything, so it will happily swallow
+    "Ahmedabad" as a product variant when the customer is really telling us
+    their city. Grounded values win over the slot that happens to be open.
+    """
+    return bool(
+        extract_city(text)
+        or extract_mobile(text)
+        or extract_date(text)[0]
+    )

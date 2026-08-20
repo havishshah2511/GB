@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 245 tests
+python -m pytest        # 304 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -305,6 +305,60 @@ generated are all tracked, and the referrer is notified when their invite lands.
 
 ---
 
+## Product catalogue
+
+`app/catalog/taxonomy.json` holds **1,366 products across 102 procurement
+families**, extracted from the Magaao category brief — HVAC, solar, electrical,
+automation, kitchen, furniture, security, IT, medical, packaging and more.
+
+It does two jobs, both about *not fragmenting demand*:
+
+- **Canonicalisation.** "20 cassette ac", "Cassette A/C" and the typo "cassete
+  ac" all resolve to the catalogue entry **Cassette AC**, so those buyers pool.
+  Groups are labelled from the catalogue, not from whoever happened to arrive
+  first.
+- **Separation.** A cassette AC and a split AC are both air conditioning but are
+  not the same purchase and a supplier quotes them differently, so they stay
+  apart. `family` still lets the back office roll demand up per family.
+
+Matching is longest-token-overlap with a strict fuzzy fallback; an unrecognised
+product still works, it just doesn't get a family. The brief's closing
+"procurement events" (restaurant setup, factory expansion) are kept separately
+in the same file for a future "what are you opening?" flow.
+
+### Dedicated flows decline what they can't price
+
+The AC flow asks split-or-window and prices off split-AC slab tables, so it
+declines cassette, ductable, VRF, chillers and the rest via `exclusions`. Those
+fall through to the open-ended category, where they pool by catalogue name and
+wait for a real quote — rather than being asked irrelevant questions and priced
+off the wrong table. A spelling difference can therefore never change which
+flow a product enters.
+
+---
+
+## Hinglish
+
+Customers type Hindi in Latin script and mix it with English. The same
+extractors carry the vocabulary — there is no second engine and no translation
+step:
+
+> "mujhe 20 cassette AC chahiye" → 20 × Cassette AC
+
+| | |
+| --- | --- |
+| Numbers | ek, do, teen, char, paanch, das, bees, pachas, sau, **ek hazaar** = 1000 |
+| Timing | abhi, aaj, kal, parso, jaldi, agle hafte, agle mahine |
+| Yes / no | haan, ji, bilkul, theek hai / nahi, nai, mat |
+| Commands | cancel karo, band karo, purana order dikhao, status batao, dusra product, bas ho gaya, shukriya |
+| Questions | ye kya hai, kaise kaam karta hai, samjhao |
+
+Multipliers bind to what precedes them, so "5 hazaar" is 5000 rather than 5,
+and longer phrases are matched before their prefixes so "do sau" is not read as
+"do".
+
+---
+
 ## Any product
 
 AC and rice have negotiated slab tables. Everything else goes through the
@@ -534,6 +588,7 @@ tests/test_window_matching.py  deadline semantics, pooling, no dead-end loops
 tests/test_consolidation.py  auto-merge sweep, what must never be pooled
 tests/test_open_products.py  any-product pooling, unpriced-group honesty
 tests/test_reset.py          data reset guards and behaviour
+tests/test_taxonomy_hinglish.py  product catalogue matching, Hinglish input
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations
 tests/test_end_to_end.py     the full loop, asserted against the spec's numbers
