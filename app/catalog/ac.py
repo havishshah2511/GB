@@ -87,7 +87,10 @@ AC_SLOTS = (
         name="star_rating",
         label="Star rating",
         question="Any star rating preference?",
-        priority=55,
+        # Straight after the brand questions: rating and brand are the two
+        # things a buyer weighs together, and asking them side by side reads
+        # better than returning to it once location and dates are done.
+        priority=42,
         chips=("3 Star", "5 Star", "No Preference"),
         synonyms={
             "3 Star": (r"\b3\s*star\b", r"\bthree\s*star\b"),
@@ -95,7 +98,10 @@ AC_SLOTS = (
             "5 Star": (r"\b5\s*star\b", r"\bfive\s*star\b"),
             "No Preference": (r"\bno\s*preference\b", r"\bany\b", r"\bdoesn'?t matter\b"),
         },
-        required=False,
+        # Always asked, so it holds its place in the sequence. Optional slots
+        # are capped at two per conversation and can be dropped entirely, which
+        # made it appear only sometimes. "No Preference" is one tap.
+        required=True,
     ),
     Slot(
         name="installation_required",

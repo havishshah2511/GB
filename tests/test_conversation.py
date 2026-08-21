@@ -104,6 +104,39 @@ def test_mobile_is_asked_straight_after_the_product(chat):
     assert order.index("name") >= len(order) - 2
 
 
+def test_ac_question_order(chat):
+    """The sequence is a product decision, so it is pinned here.
+
+    Star rating sits immediately after the brand questions: a buyer weighs
+    brand and rating together, and asking them side by side reads better than
+    coming back to it after location and dates.
+    """
+    answers = {
+        "capacity": "1.5 Ton", "ac_type": "Split", "inverter": "Inverter",
+        "preferred_brand": "Daikin", "brand_flexible": "yes",
+        "star_rating": "5 Star", "city": "Ahmedabad", "area": "Satellite",
+        "desired_purchase_date": "Within 7 days", "can_wait": "yes",
+        "name": "Rahul", "mobile": "9876500055",
+    }
+    chat("order1", "")
+    reply = chat("order1", "I need 2 AC")
+    order = []
+    for _ in range(16):
+        question = reply.get("question")
+        if not question or reply.get("done"):
+            break
+        order.append(question["slot"])
+        reply = chat("order1", answers.get(question["slot"])
+                     or (question["chips"][0]["value"] if question["chips"] else "skip"))
+
+    assert order[:7] == [
+        "mobile", "capacity", "ac_type", "inverter",
+        "preferred_brand", "brand_flexible", "star_rating",
+    ], order
+    assert order.index("star_rating") < order.index("city"), "rating must precede location"
+    assert order[-1] == "name"
+
+
 def test_mobile_is_mandatory_before_the_intent_becomes_active(chat):
     chat("s6", "")
     reply = chat("s6", "I need 2 AC 1.5 ton split inverter in Ahmedabad within 7 days")
