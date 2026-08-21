@@ -70,7 +70,7 @@ def test_show_past_phrases(phrase):
     "I want to change the product",
     "different product",
     "something else",
-    "can I switch to rice",
+    "can I switch to something else",
 ])
 def test_change_product_phrases(phrase):
     assert rules.detect_command(phrase) == "change_product"
@@ -178,8 +178,10 @@ def test_a_missed_answer_offers_a_way_out(chat):
 def test_cancel_with_several_requests_asks_which(chat):
     mobile = "9876522009"
     answer_all(chat, "c9a", "I need 2 AC", {**AC_ANSWERS, "mobile": mobile})
-    answer_all(chat, "c9b", "I need 100 kg basmati rice",
-               {**AC_ANSWERS, "mobile": mobile, "grade": "Premium", "usage": "Personal"})
+    answer_all(chat, "c9b", "I need 3 fridge",
+               {**AC_ANSWERS, "mobile": mobile, "capacity": "200-300 L",
+                "door_type": "Double Door", "defrost": "Frost Free",
+                "star_rating": "3 Star", "usage": "Home"})
 
     chat("c9c", "")
     chat("c9c", "I need AC")

@@ -52,8 +52,8 @@ def test_chat_history_endpoint(client):
 def test_catalog_endpoint_lists_every_category(client):
     data = client.get("/api/catalog").json()
     keys = {c["key"] for c in data["categories"]}
-    # AC and rice have their own priced flows; GENERAL accepts anything else.
-    assert keys == {"AC", "RICE", "GENERAL"}
+    # AC and refrigerator have their own priced flows; GENERAL takes the rest.
+    assert keys == {"AC", "FRIDGE", "GENERAL"}
     assert keys == set(catalog.CATEGORIES), "the API must expose the whole registry"
 
 
@@ -197,7 +197,7 @@ def test_demand_by_product_reports_quantity_pending_to_close_a_price(client):
     products = client.get("/api/admin/demand-by-product").json()["products"]
     by_key = {p["category"]: p for p in products}
 
-    assert "AC" in by_key and "RICE" in by_key, "every category is listed, even empty ones"
+    assert "AC" in by_key and "FRIDGE" in by_key, "every category is listed, even empty ones"
     ac = by_key["AC"]
     assert ac["groups"] == 2
     assert ac["customers"] == 2
@@ -210,8 +210,8 @@ def test_demand_by_product_reports_quantity_pending_to_close_a_price(client):
     assert ac["pending_qty"] == 6, "product-level pending is the sum of its groups"
 
     # Untouched category reports zeroes rather than being absent.
-    assert by_key["RICE"]["groups"] == 0
-    assert by_key["RICE"]["pending_qty"] == 0
+    assert by_key["FRIDGE"]["groups"] == 0
+    assert by_key["FRIDGE"]["pending_qty"] == 0
 
     # Closest-to-closing group is listed first so an operator sees it at a glance.
     assert ac["group_rows"][0]["pending_qty"] == 2

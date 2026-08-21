@@ -1,4 +1,4 @@
-"""Any product, not just AC and rice.
+"""Any product, not just AC and refrigerators.
 
 The customer names the product, it is normalised into a grouping key, and
 buyers wanting the same thing in the same city pool together. Such a group
@@ -72,7 +72,7 @@ def test_unit_detection(text, unit):
 # --------------------------------------------------------------------------- #
 def test_a_known_product_still_uses_its_own_flow():
     assert catalog.detect("I need 2 AC") == "AC"
-    assert catalog.detect("100 kg basmati") == "RICE"
+    assert catalog.detect("2 fridge") == "FRIDGE"
 
 
 def test_an_unknown_product_falls_back_to_the_open_category():

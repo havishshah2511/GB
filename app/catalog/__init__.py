@@ -14,7 +14,7 @@ from .base import Category, Slab, Slot
 
 #: Order matters: it is the order of the opening chips, and the open-ended
 #: fallback must come last.
-_MODULES = ("ac", "rice", "general")
+_MODULES = ("ac", "refrigerator", "general")
 
 CATEGORIES: dict[str, Category] = {}
 for _name in _MODULES:

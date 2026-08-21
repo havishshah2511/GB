@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 304 tests
+python -m pytest        # 305 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -204,7 +204,7 @@ with a deadline) to `maximum_purchase_date` — not from the desired date.
 
 Treating the desired date as the window *start* is subtly catastrophic: a buyer
 saying "within 7 days" got 24–31 Aug and one saying "within 15 days" got 1–8
-Sep. Adjacent, non-overlapping, so two buyers who wanted the same rice in the
+Sep. Adjacent, non-overlapping, so two buyers who wanted the same refrigerators in the
 same city were split into separate groups, their quantities never combined, the
 price never dropped, and nobody was notified. `test_window_matching.py` pins it.
 
@@ -240,6 +240,8 @@ and every blocker — so an operator can see exactly why an intent landed where 
 
 Each group owns a private copy of its slab table (editable per group without
 touching the product-wide template).
+
+The AC table, for example:
 
 | Quantity | Price |
 | --- | ---: |
@@ -361,7 +363,7 @@ and longer phrases are matched before their prefixes so "do sau" is not read as
 
 ## Any product
 
-AC and rice have negotiated slab tables. Everything else goes through the
+AC and refrigerators have negotiated slab tables. Everything else goes through the
 **open-ended** category: the customer names the product in their own words and
 buyers wanting the same thing in the same city pool together.
 
@@ -396,6 +398,21 @@ daily notification cap, because it is the payoff for joining on trust.
 
 A product that outgrows this — enough volume to be worth a dedicated flow with
 its own questions and standing slab table — graduates to its own module.
+
+---
+
+## Categories
+
+| | Flow | Grouped by |
+| --- | --- | --- |
+| ❄️ **Air Conditioner** | capacity, split/window, inverter, brand, star rating | capacity + type + inverter |
+| 🧊 **Refrigerator** | size in litres, door type, direct-cool/frost-free, brand, star rating, use | size + door type + defrost |
+| 🛒 **Something else** | product name in the customer's own words | catalogue product name |
+
+Both dedicated flows ask their spec questions in the same order — spec, then
+brand, then star rating, then location and dates — and decline the variants
+they cannot price (commercial cold storage, cassette AC), which fall through to
+the open-ended flow.
 
 ---
 

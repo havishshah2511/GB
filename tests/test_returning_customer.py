@@ -95,7 +95,7 @@ def test_choosing_new_continues_the_full_flow(chat):
     customer = customers.by_mobile("9876511666")
 
     chat("r6b", "")
-    chat("r6b", "I need 100 kg basmati rice")
+    chat("r6b", "I need 3 fridge")
     reply = chat("r6b", "9876511666")
     assert reply["question"]["slot"] == "_returning_choice"
 
@@ -111,7 +111,7 @@ def test_choosing_new_continues_the_full_flow(chat):
     assert reply["done"] is True
     records = intents.list_by_customer(customer["id"])
     assert len(records) == 2
-    assert {r["category"] for r in records} == {"AC", "RICE"}
+    assert {r["category"] for r in records} == {"AC", "FRIDGE"}
 
 
 # --------------------------------------------------------------------------- #

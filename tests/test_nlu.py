@@ -30,16 +30,17 @@ def test_quantity_survives_words_between_number_and_product():
 @pytest.mark.parametrize(
     "text,expected",
     [
-        ("I need 100kg rice", 100),
-        ("I need 200 kg Basmati", 200),
-        ("2 quintal rice please", 200),
-        ("1 ton of rice", 1000),
-        ("need 4 bags of basmati", 100),
+        ("I need 3 fridge", 3),
+        ("2 refrigerators please", 2),
+        ("I need 4 LG double door fridges", 4),
+        # A spec figure is not a quantity: 300 is the size, 3 is the order.
+        ("I need 3 fridge 300 L", 3),
+        ("3 fridge 5 star", 3),
     ],
 )
-def test_rice_quantities_normalise_to_kilograms(text, expected):
+def test_fridge_quantities_are_counted_in_units(text, expected):
     slots = rules.extract(text, {})
-    assert slots["category"] == "RICE"
+    assert slots["category"] == "FRIDGE"
     assert slots["quantity"] == expected
 
 

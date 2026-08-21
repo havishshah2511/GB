@@ -13,16 +13,17 @@ from app.worker import run_once
 
 from conftest import answer_all
 
-RICE = {
-    "grade": "Premium", "usage": "Restaurant", "city": "Vadodara",
-    "area": "Alkapuri", "brand_preference": "India Gate", "brand_flexible": "yes",
-    "can_wait": "yes", "package_size": "25 kg", "desired_purchase_date": "Within 7 days",
+FRIDGE = {
+    "capacity": "200-300 L", "door_type": "Double Door", "defrost": "Frost Free",
+    "city": "Vadodara", "area": "Alkapuri", "preferred_brand": "LG",
+    "brand_flexible": "yes", "star_rating": "3 Star", "usage": "Home",
+    "can_wait": "yes", "desired_purchase_date": "Within 7 days",
 }
 
 
-def rice_buyer(chat, session, opening, name, mobile, **overrides):
+def fridge_buyer(chat, session, opening, name, mobile, **overrides):
     return answer_all(chat, session, opening,
-                      {**RICE, **overrides, "name": name, "mobile": mobile})
+                      {**FRIDGE, **overrides, "name": name, "mobile": mobile})
 
 
 def force_split(chat):
@@ -31,8 +32,8 @@ def force_split(chat):
     Built by moving the second buyer into a group of their own, the way the old
     matching rules used to.
     """
-    rice_buyer(chat, "c1", "I need 33 kg basmati rice", "Havish", "9000000001")
-    rice_buyer(chat, "c2", "I need 100 kg basmati rice", "Harsh", "9000000002")
+    fridge_buyer(chat, "c1", "I need 3 fridge", "Havish", "9000000001")
+    fridge_buyer(chat, "c2", "I need 4 fridge", "Harsh", "9000000002")
 
     first, second = intents.list_intents()[::-1]
     original = groups.get(first["group_id"])
@@ -50,7 +51,7 @@ def test_consolidate_pools_two_groups_for_the_same_product(chat):
 
     open_groups = groups.list_groups()
     assert len(open_groups) == 1
-    assert open_groups[0]["strong_intent_qty"] == 133
+    assert open_groups[0]["strong_intent_qty"] == 7
 
 
 def test_consolidation_repriced_the_pooled_group(chat):
@@ -58,8 +59,8 @@ def test_consolidation_repriced_the_pooled_group(chat):
     groups.consolidate()
 
     group = groups.list_groups()[0]
-    assert group["current_price"] == 90, "133 kg should sit in the 100-249 slab"
-    assert group["next_target_qty"] == 250
+    assert group["current_price"] == 30800, "7 units should sit in the 6-10 slab"
+    assert group["next_target_qty"] == 11
 
 
 def test_the_larger_group_absorbs_the_smaller(chat):
@@ -93,10 +94,10 @@ def test_members_of_the_absorbed_group_are_told_about_the_new_price(chat):
     may not move at all -- so recalculate() can never discover this."""
     force_split(chat)
 
-    # Havish is alone in the 33 kg group paying ₹95; the other group is at ₹90.
+    # Havish is alone in the 3-unit group paying ₹32,000; the other is at ₹30,800.
     small = min(groups.list_groups(), key=lambda g: g["strong_intent_qty"])
     havish = groups.members(small["id"], active_only=True)[0]
-    assert small["current_price"] == 95
+    assert small["current_price"] == 32000
 
     before = len(notifications.history(customer_id=havish["customer_id"]))
     groups.consolidate()
@@ -104,8 +105,8 @@ def test_members_of_the_absorbed_group_are_told_about_the_new_price(chat):
 
     assert len(after) > before, "the absorbed buyer was never told"
     drop = next(n for n in after if n["type"] == "price_drop")
-    assert "₹90" in drop["message"]
-    assert "₹95" in drop["message"], "should show what they were paying before"
+    assert "₹30,800" in drop["message"]
+    assert "₹32,000" in drop["message"], "should show what they were paying before"
 
 
 def test_consolidation_is_idempotent(chat):
@@ -119,8 +120,8 @@ def test_consolidation_is_idempotent(chat):
 # what must NOT be pooled
 # --------------------------------------------------------------------------- #
 def test_different_cities_are_left_alone(chat):
-    rice_buyer(chat, "d1", "I need 50 kg basmati rice", "A", "9000001001")
-    rice_buyer(chat, "d2", "I need 50 kg basmati rice", "B", "9000001002",
+    fridge_buyer(chat, "d1", "I need 5 fridge", "A", "9000001001")
+    fridge_buyer(chat, "d2", "I need 5 fridge", "B", "9000001002",
                city="Surat", area="Adajan")
 
     assert groups.consolidate()["groups_merged"] == 0
@@ -128,17 +129,17 @@ def test_different_cities_are_left_alone(chat):
 
 
 def test_different_specifications_are_left_alone(chat):
-    rice_buyer(chat, "d3", "I need 50 kg basmati rice", "A", "9000001003")
-    rice_buyer(chat, "d4", "I need 50 kg sona masoori rice", "B", "9000001004",
-               grade="Standard")
+    fridge_buyer(chat, "d3", "I need 5 fridge", "A", "9000001003")
+    fridge_buyer(chat, "d4", "I need 5 fridge", "B", "9000001004",
+               capacity="500 L+", door_type="Side-by-Side")
 
     assert groups.consolidate()["groups_merged"] == 0
     assert len(groups.list_groups()) == 2
 
 
 def test_a_brand_locked_group_is_never_pooled_with_a_flexible_one(chat):
-    rice_buyer(chat, "d5", "I need 50 kg basmati rice", "A", "9000001005")
-    rice_buyer(chat, "d6", "I need 50 kg basmati rice", "B", "9000001006",
+    fridge_buyer(chat, "d5", "I need 5 fridge", "A", "9000001005")
+    fridge_buyer(chat, "d6", "I need 5 fridge", "B", "9000001006",
                brand_flexible="no")
 
     modes = sorted(g["match_mode"] for g in groups.list_groups())
@@ -150,9 +151,9 @@ def test_a_brand_locked_group_is_never_pooled_with_a_flexible_one(chat):
 
 
 def test_groups_with_unrelated_purchase_windows_are_left_alone(chat):
-    rice_buyer(chat, "d7", "I need 50 kg basmati rice", "A", "9000001007")
+    fridge_buyer(chat, "d7", "I need 5 fridge", "A", "9000001007")
     far = str(today() + timedelta(days=150))
-    rice_buyer(chat, "d8", "I need 50 kg basmati rice", "B", "9000001008",
+    fridge_buyer(chat, "d8", "I need 5 fridge", "B", "9000001008",
                desired_purchase_date=far)
 
     assert len(groups.list_groups()) == 2
@@ -160,8 +161,8 @@ def test_groups_with_unrelated_purchase_windows_are_left_alone(chat):
 
 
 def test_mergeable_explains_its_refusals(chat):
-    rice_buyer(chat, "d9", "I need 50 kg basmati rice", "A", "9000001009")
-    rice_buyer(chat, "d10", "I need 50 kg basmati rice", "B", "9000001010",
+    fridge_buyer(chat, "d9", "I need 5 fridge", "A", "9000001009")
+    fridge_buyer(chat, "d10", "I need 5 fridge", "B", "9000001010",
                city="Surat", area="Adajan")
 
     a, b = groups.list_groups()

@@ -547,7 +547,7 @@ def _change_product(state: dict[str, Any]) -> dict[str, Any]:
             slot="category",
             text="What would you like to buy instead?",
             chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
-            placeholder="Or just type it, e.g. “100 kg basmati”",
+            placeholder="Or just type it, e.g. “3 double door fridge”",
         ),
     }
 

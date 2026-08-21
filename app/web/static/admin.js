@@ -266,6 +266,14 @@
     $("#merge-open")?.addEventListener("click", openMergeDialog);
   }
 
+  // Category keys come from whatever the server has loaded -- hardcoding them
+  // meant the intents filter still offered a category that had been removed.
+  function categoryKeys() {
+    const fromGroups = (state.data.groups || []).map((g) => g.product.category);
+    const fromProducts = (state.data.products || []).map((p) => p.category);
+    return [...new Set([...fromProducts, ...fromGroups])].sort();
+  }
+
   function stat(label, value, tone = "", note = "") {
     return `<div class="pstat ${tone}">
       <div class="k">${esc(label)}</div>
@@ -428,6 +436,11 @@
   // ----------------------------------------------------------------- intents
   async function renderIntents(root) {
     const f = state.filters;
+    // The category list is server-driven; fetch it once so the filter can
+    // never offer a category the app no longer has.
+    if (!state.data.products) {
+      state.data.products = (await api("/demand-by-product")).products;
+    }
     const qs = new URLSearchParams();
     if (f.status) qs.set("status_filter", f.status);
     if (f.strength) qs.set("strength", f.strength);
@@ -457,7 +470,7 @@
           ${["enquiry", "intent", "strong_intent", "ready_to_buy", "confirmed"].map((s) =>
             `<option ${f.strength === s ? "selected" : ""}>${s}</option>`).join("")}</select>
         <select id="f-category"><option value="">All categories</option>
-          ${["AC", "RICE"].map((s) => `<option ${f.category === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+          ${categoryKeys().map((s) => `<option ${f.category === s ? "selected" : ""}>${s}</option>`).join("")}</select>
         <input type="search" id="f-city" placeholder="City…" value="${esc(f.city || "")}">
         <button class="act" id="apply-filters">Apply</button>
         <span class="hint">${d.intents.length} shown</span>

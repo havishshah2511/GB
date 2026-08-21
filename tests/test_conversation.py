@@ -15,12 +15,14 @@ def cards(reply, kind=None):
     return [c for c in found if kind is None or c["type"] == kind]
 
 
-def test_opening_offers_both_categories(chat):
+def test_opening_offers_every_category(chat):
     reply = chat("s1", "")
     assert "combining your requirement" in texts(reply)
     labels = [c["label"] for c in reply["chips"]]
     assert any("Air Conditioner" in l for l in labels)
-    assert any("Rice" in l for l in labels)
+    assert any("Refrigerator" in l for l in labels)
+    # ...and a way in for anything without a dedicated flow.
+    assert any("Something else" in l for l in labels)
 
 
 def test_never_asks_for_information_already_given(chat):
@@ -64,22 +66,24 @@ def test_ac_flow_reaches_a_group_and_shows_the_full_result(chat):
     assert intent["city"] == "Ahmedabad"
 
 
-def test_rice_flow_collects_its_own_specification(chat):
+def test_fridge_flow_collects_its_own_specification(chat):
     reply = answer_all(
-        chat, "s4", "I need 200 kg Basmati",
+        chat, "s4", "I need 3 fridge",
         {
-            "grade": "Premium", "usage": "Restaurant", "brand_preference": "India Gate",
-            "brand_flexible": "yes", "city": "Ahmedabad", "area": "Navrangpura",
+            "capacity": "300-500 L", "door_type": "Double Door", "defrost": "Frost Free",
+            "preferred_brand": "LG", "brand_flexible": "yes", "star_rating": "5 Star",
+            "usage": "Home", "city": "Ahmedabad", "area": "Navrangpura",
             "desired_purchase_date": "Within 7 days", "can_wait": "yes",
             "name": "Hotel Rasoi", "mobile": "9876500000",
         },
     )
     assert reply["done"] is True
     intent = intents.get_full(reply["summary"]["intent_id"])
-    assert intent["category"] == "RICE"
-    assert intent["quantity"] == 200
-    assert intent["unit"] == "kg"
-    assert "Basmati" in intent["product"]
+    assert intent["category"] == "FRIDGE"
+    assert intent["quantity"] == 3
+    assert intent["unit"] == "fridge"
+    assert "300-500 L" in intent["product"]
+    assert "Double Door" in intent["product"]
 
 
 def test_mobile_is_asked_straight_after_the_product(chat):

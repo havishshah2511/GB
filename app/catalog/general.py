@@ -1,6 +1,6 @@
 """Any product.
 
-AC and rice have negotiated slab tables. This category is for everything else:
+AC and refrigerators have negotiated slab tables. This is for everything else:
 the customer names the product, it is normalised into a grouping key, and
 buyers wanting the same thing in the same city pool together.
 

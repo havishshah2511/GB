@@ -97,7 +97,7 @@ def build_schema(category: catalog.Category | None) -> dict[str, Any]:
         ),
         "quantity": _nullable(
             {"type": "number", "description":
-             "How many units the customer needs. For rice, always in kilograms."}
+             "How many units the customer needs, in the category unit."}
         ),
         "city": _nullable({"type": "string", "description": "City name only."}),
         "area": _nullable({"type": "string", "description": "Neighbourhood or locality within the city."}),

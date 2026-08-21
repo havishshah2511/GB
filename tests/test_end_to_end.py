@@ -179,10 +179,11 @@ def test_filler_answers_never_become_data(chat):
     assert not any(g["city"].lower() in ("skip", "no", "none") for g in groups.list_groups())
 
 
-def test_rice_and_ac_demand_stay_in_separate_groups(chat):
+def test_fridge_and_ac_demand_stay_in_separate_groups(chat):
     buy(chat, "mix-a", "I need 4 AC", "Neha", "9811130001")
-    answer_all(chat, "mix-b", "I need 300 kg Basmati rice", {
-        "grade": "Premium", "usage": "Restaurant", "brand_preference": "No Preference",
+    answer_all(chat, "mix-b", "I need 7 fridge", {
+        "capacity": "200-300 L", "door_type": "Double Door", "defrost": "Frost Free",
+        "preferred_brand": "No Preference", "star_rating": "3 Star", "usage": "Shop",
         "city": "Ahmedabad", "area": "Navrangpura",
         "desired_purchase_date": "Within 15 days", "can_wait": "yes",
         "name": "Hotel Rasoi", "mobile": "9811130002",
@@ -190,11 +191,11 @@ def test_rice_and_ac_demand_stay_in_separate_groups(chat):
 
     all_groups = groups.list_groups()
     assert len(all_groups) == 2
-    assert {g["product_category"] for g in all_groups} == {"AC", "RICE"}
+    assert {g["product_category"] for g in all_groups} == {"AC", "FRIDGE"}
 
-    rice = next(g for g in all_groups if g["product_category"] == "RICE")
-    assert rice["strong_intent_qty"] == 300
-    assert rice["current_price"] == 86          # 250-499 kg slab, premium basmati
+    fridge = next(g for g in all_groups if g["product_category"] == "FRIDGE")
+    assert fridge["strong_intent_qty"] == 7
+    assert fridge["current_price"] == 30800     # 6-10 slab, 200-300 L frost free
 
 
 def test_expired_demand_leaves_and_the_price_reverts(chat):

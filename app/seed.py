@@ -62,22 +62,22 @@ DEMO_INTENTS: list[dict[str, Any]] = [
      "brand_flexible": True, "desired_purchase_date": _date(6),
      "maximum_purchase_date": _date(15), "can_wait": True},
 
-    # --- Ahmedabad · Premium Basmati rice -----------------------------------
-    {"category": "RICE", "quantity": 400, "city": "Ahmedabad", "area": "Navrangpura",
-     "name": "Hotel Rasoi", "mobile": "9820011008", "rice_type": "Basmati",
-     "grade": "Premium", "usage": "Restaurant", "brand_preference": "India Gate",
-     "brand_flexible": True, "recurring_monthly": True, "package_size": "25 kg",
+    # --- Ahmedabad · 200-300 L double door frost free fridges ----------------
+    {"category": "FRIDGE", "quantity": 4, "city": "Ahmedabad", "area": "Navrangpura",
+     "name": "Hotel Rasoi", "mobile": "9820011008", "capacity": "200-300 L",
+     "door_type": "Double Door", "defrost": "Frost Free", "usage": "Restaurant / Hotel",
+     "preferred_brand": "LG", "brand_flexible": True, "star_rating": "3 Star",
      "desired_purchase_date": _date(5), "maximum_purchase_date": _date(13), "can_wait": True},
-    {"category": "RICE", "quantity": 250, "city": "Ahmedabad", "area": "Vastrapur",
-     "name": "Gokul Caterers", "mobile": "9820011009", "rice_type": "Basmati",
-     "grade": "Premium", "usage": "Catering", "brand_preference": "No Preference",
-     "brand_flexible": True, "desired_purchase_date": _date(8),
-     "maximum_purchase_date": _date(18), "can_wait": True},
-    {"category": "RICE", "quantity": 100, "city": "Ahmedabad", "area": "Satellite",
-     "name": "Meera Iyer", "mobile": "9820011010", "rice_type": "Basmati",
-     "grade": "Premium", "usage": "Personal", "brand_preference": "Daawat",
-     "brand_flexible": True, "desired_purchase_date": _date(6),
-     "maximum_purchase_date": _date(12), "can_wait": True},
+    {"category": "FRIDGE", "quantity": 3, "city": "Ahmedabad", "area": "Vastrapur",
+     "name": "Gokul Caterers", "mobile": "9820011009", "capacity": "200-300 L",
+     "door_type": "Double Door", "defrost": "Frost Free", "usage": "Shop",
+     "preferred_brand": "No Preference", "brand_flexible": True, "star_rating": "3 Star",
+     "desired_purchase_date": _date(8), "maximum_purchase_date": _date(18), "can_wait": True},
+    {"category": "FRIDGE", "quantity": 2, "city": "Ahmedabad", "area": "Satellite",
+     "name": "Meera Iyer", "mobile": "9820011010", "capacity": "200-300 L",
+     "door_type": "Double Door", "defrost": "Frost Free", "usage": "Home",
+     "preferred_brand": "Samsung", "brand_flexible": True, "star_rating": "5 Star",
+     "desired_purchase_date": _date(6), "maximum_purchase_date": _date(12), "can_wait": True},
 ]
 
 

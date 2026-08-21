@@ -89,7 +89,7 @@ class Category:
     brand_field: str = ""
     flex_field: str = "brand_flexible"
     # Noun used when naming the product ("1.5 Ton Split Inverter **AC**",
-    # "Basmati Premium **Rice**"). Defaults to the counting unit.
+    # "200-300 L Double Door **Refrigerator**"). Defaults to the counting unit.
     product_noun: str = ""
     # An open category has no fixed product list: the customer names the
     # product and it is normalised into the grouping key. Such groups start

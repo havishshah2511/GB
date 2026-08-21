@@ -71,7 +71,7 @@ def test_an_unknown_product_is_not_forced_into_the_catalogue():
     ("I need 2 AC", "AC"),
     ("2 split ac", "AC"),
     ("window ac", "AC"),
-    ("100 kg basmati", "RICE"),
+    ("3 refrigerators", "FRIDGE"),
     # The AC flow asks split-or-window and prices off split slabs, so other
     # air conditioning goes to the open-ended category rather than being
     # priced off the wrong table.
