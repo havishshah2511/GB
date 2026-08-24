@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 341 tests
+python -m pytest        # 380 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -408,6 +408,7 @@ its own questions and standing slab table — graduates to its own module.
 | ❄️ **Air Conditioner** | capacity, split/window, inverter, brand, star rating | capacity + type + inverter |
 | 🧊 **Refrigerator** | size in litres, door type, direct-cool/frost-free, brand, star rating, use | size + door type + defrost |
 | 📺 **Television** | screen size, LED/QLED/OLED, resolution, smart, brand, use, wall mount | size + panel + resolution |
+| ☀️ **Solar panels** | module technology, panels-only vs installed, mounting, wattage, brand, site, DCR | technology + scope + mounting |
 | 🛒 **Something else** | product name in the customer's own words | catalogue product name |
 
 Both dedicated flows ask their spec questions in the same order — spec, then
@@ -608,6 +609,7 @@ tests/test_consolidation.py  auto-merge sweep, what must never be pooled
 tests/test_open_products.py  any-product pooling, unpriced-group honesty
 tests/test_reset.py          data reset guards and behaviour
 tests/test_tv.py             TV routing, specs, panel-technology pricing
+tests/test_solar.py          solar routing, kW capacity, scope-based pricing
 tests/test_taxonomy_hinglish.py  product catalogue matching, Hinglish input
 tests/test_notifications.py  triggers, dedupe, rate limits, expiry, referrals
 tests/test_api.py            every endpoint including admin operations

@@ -52,8 +52,9 @@ def test_chat_history_endpoint(client):
 def test_catalog_endpoint_lists_every_category(client):
     data = client.get("/api/catalog").json()
     keys = {c["key"] for c in data["categories"]}
-    # AC, refrigerator and TV have their own priced flows; GENERAL takes the rest.
-    assert keys == {"AC", "FRIDGE", "TV", "GENERAL"}
+    # AC, refrigerator, TV and solar have their own priced flows; GENERAL
+    # takes everything else.
+    assert keys == {"AC", "FRIDGE", "TV", "SOLAR", "GENERAL"}
     assert keys == set(catalog.CATEGORIES), "the API must expose the whole registry"
 
 

@@ -22,6 +22,7 @@ def test_opening_offers_every_category(chat):
     assert any("Air Conditioner" in l for l in labels)
     assert any("Refrigerator" in l for l in labels)
     assert any("Television" in l for l in labels)
+    assert any("Solar" in l for l in labels)
     # ...and a way in for anything without a dedicated flow.
     assert any("Something else" in l for l in labels)
 
