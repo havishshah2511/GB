@@ -35,6 +35,9 @@ services:
       # PUBLIC_BASE_URL is deliberately absent: Render sets RENDER_EXTERNAL_URL
       # to the real https URL and the app falls back to it, so share and status
       # links are correct on the first boot without anyone editing anything.
+      # Categories offered to customers; others stay hidden. "*" for all.
+      - key: ENABLED_CATEGORIES
+        value: "PLY"
       - key: SEED_DEMO_DATA
         value: "0"
       - key: ENABLE_BACKGROUND_WORKER

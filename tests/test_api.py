@@ -54,7 +54,7 @@ def test_catalog_endpoint_lists_every_category(client):
     keys = {c["key"] for c in data["categories"]}
     # AC, refrigerator, TV and solar have their own priced flows; GENERAL
     # takes everything else.
-    assert keys == {"AC", "FRIDGE", "TV", "SOLAR", "GENERAL"}
+    assert keys == {"PLY", "AC", "FRIDGE", "TV", "SOLAR", "GENERAL"}
     assert keys == set(catalog.CATEGORIES), "the API must expose the whole registry"
 
 

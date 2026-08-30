@@ -287,17 +287,21 @@ def next_question(state: dict[str, Any]) -> Question | None:
             placeholder="10-digit mobile number",
         )
 
-    if not _slot_filled(state, "quantity"):
-        return Question(
-            slot="quantity",
-            text=category.quantity_question,
-            chips=[_chip(c) for c in category.quantity_chips],
-            input_type="number",
-            placeholder=f"Quantity in {category.unit}",
-        )
-
     optional_asked = len(state.get("_optional_asked", []))
     candidates: list[tuple[int, Question]] = []
+
+    # Quantity competes on priority like any other question, so a category can
+    # place it after its specification (plywood) or first (AC).
+    if not _slot_filled(state, "quantity"):
+        candidates.append(
+            (category.quantity_priority, Question(
+                slot="quantity",
+                text=category.quantity_question,
+                chips=[_chip(c) for c in category.quantity_chips],
+                input_type="number",
+                placeholder=f"Quantity in {category.unit}",
+            ))
+        )
 
     for slot in category.slots:
         if _slot_filled(state, slot.name) or not slot.should_ask(state):
@@ -1309,6 +1313,11 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
     # A product nobody has quoted for yet: say so instead of implying a price.
     if not facts.get("has_pricing"):
         messages.append({"role": "bot", "text": facts["pricing_note"]})
+
+    # Anything else the category wants to tell them (solar's subsidy estimate).
+    if category.extra_cards:
+        for card in category.extra_cards(state, facts):
+            messages.append({"role": "bot", "card": card})
 
     target_card = _next_target_card(group, qty)
     if target_card:

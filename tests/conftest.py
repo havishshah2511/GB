@@ -18,6 +18,9 @@ os.environ["SEED_DEMO_DATA"] = "0"
 os.environ["ENABLE_BACKGROUND_WORKER"] = "0"
 os.environ["ANTHROPIC_API_KEY"] = ""          # force the offline rules engine
 os.environ["PUBLIC_BASE_URL"] = "http://testserver"
+# The suite exercises every category, including any currently hidden from
+# the live chatbot by ENABLED_CATEGORIES.
+os.environ["ENABLED_CATEGORIES"] = "*"
 os.environ.setdefault("ADMIN_USER", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "admin")
 

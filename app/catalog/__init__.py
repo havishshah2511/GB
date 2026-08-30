@@ -12,14 +12,35 @@ from typing import Any
 
 from .base import Category, Slab, Slot
 
-#: Order matters: it is the order of the opening chips, and the open-ended
-#: fallback must come last.
-_MODULES = ("ac", "refrigerator", "tv", "solar", "general")
+#: Every category that exists. Order matters: it is the order of the opening
+#: chips, and the open-ended fallback must come last.
+_MODULES = ("plywood", "ac", "refrigerator", "tv", "solar", "general")
 
-CATEGORIES: dict[str, Category] = {}
+#: All of them, whether or not they are currently offered. The back office
+#: still needs these to read historical intents from a category since hidden.
+ALL_CATEGORIES: dict[str, Category] = {}
 for _name in _MODULES:
     _cat = importlib.import_module(f"{__name__}.{_name}").CATEGORY
-    CATEGORIES[_cat.key] = _cat
+    ALL_CATEGORIES[_cat.key] = _cat
+
+
+def _enabled_keys() -> list[str]:
+    """Which categories the chatbot currently offers (ENABLED_CATEGORIES)."""
+    from ..config import settings
+
+    raw = (settings.ENABLED_CATEGORIES or "").strip()
+    if raw in ("", "*", "all"):
+        return list(ALL_CATEGORIES)
+    wanted = [k.strip().upper() for k in raw.split(",") if k.strip()]
+    known = [k for k in wanted if k in ALL_CATEGORIES]
+    # Never leave the bot with nothing to sell because of a typo in config.
+    return known or list(ALL_CATEGORIES)
+
+
+#: The offered categories, in _MODULES order.
+CATEGORIES: dict[str, Category] = {
+    key: ALL_CATEGORIES[key] for key in ALL_CATEGORIES if key in set(_enabled_keys())
+}
 
 #: The category used when a product matches no specific one.
 FALLBACK_KEY = next((c.key for c in CATEGORIES.values() if c.open_ended), None)
@@ -36,8 +57,16 @@ _EXCLUSIONS: dict[str, list[re.Pattern[str]]] = {
 
 
 def get(key: str | None) -> Category | None:
+    """A category by key, including hidden ones.
+
+    Lookups must not fail for an intent captured before a category was hidden —
+    the back office still has to render it.
+    """
     if not key:
         return None
+    hit = ALL_CATEGORIES.get(str(key).strip().upper())
+    if hit is not None:
+        return hit
     return CATEGORIES.get(str(key).strip().upper())
 
 

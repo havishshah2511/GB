@@ -73,6 +73,11 @@ class Category:
     default_slab_key: str
     # what "Not Sure" resolves to when a group has to be created
     grouping_defaults: dict[str, str] = field(default_factory=dict)
+    # Where "how many?" sits among the slot priorities. The default puts it
+    # before every specification question, which suits products people count
+    # first ("I need 2 AC"). Raise it for products where the specification has
+    # to be settled before a quantity means anything (plywood).
+    quantity_priority: int = 15
     # words/regex that route a free-text message to this category
     triggers: tuple[str, ...] = ()
     # Regexes that VETO a trigger match. A dedicated flow should only claim the
@@ -95,6 +100,10 @@ class Category:
     # product and it is normalised into the grouping key. Such groups start
     # with no price slabs -- quantity pools while an operator negotiates.
     open_ended: bool = False
+    # Extra cards this category contributes once a requirement is captured,
+    # e.g. solar's subsidy estimate. Keeps category specifics out of the
+    # conversation engine. Signature: (state, facts) -> list of cards.
+    extra_cards: Callable[[dict[str, Any], dict[str, Any]], list[dict[str, Any]]] | None = None
 
     def noun(self) -> str:
         return self.product_noun or self.unit

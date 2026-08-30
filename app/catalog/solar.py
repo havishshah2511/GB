@@ -130,23 +130,32 @@ SOLAR_SLOTS = (
     Slot(
         name="site_type",
         label="Site",
-        question="What kind of site is this for?",
+        question=(
+            "What kind of site is this for?\n\n"
+            "This decides which government subsidy you qualify for."
+        ),
         # Sits where star rating does on the appliance flows: after brand.
         priority=42,
-        chips=("Factory", "Warehouse", "Office building", "Housing society",
-               "School / College", "Hospital"),
+        chips=("Home / residential", "Housing society", "Factory", "Warehouse",
+               "Office building", "School / College", "Hospital"),
         synonyms={
+            # Society before residential: "residential society" is a society.
+            "Housing society": (r"\bsociety\b", r"\bapartment\b", r"\bhousing\b",
+                                r"\bflats?\b", r"\brwa\b", r"\bcomplex\b"),
+            "Home / residential": (r"\bhome\b", r"\bhouse\b", r"\bresidential\b",
+                                   r"\bghar\b", r"\bbungalow\b", r"\bvilla\b",
+                                   r"\bindividual\b", r"\bmy\s*roof\b"),
             "Factory": (r"\bfactory\b", r"\bplant\b", r"\bindustr", r"\bmanufactur",
                         r"\bmill\b", r"\bunit\b"),
             "Warehouse": (r"\bwarehouse\b", r"\bgodown\b", r"\bstorage\b", r"\blogistic"),
             "Office building": (r"\boffice\b", r"\bcommercial\s*building\b", r"\bit\s*park\b"),
-            "Housing society": (r"\bsociety\b", r"\bapartment\b", r"\bresidential\b",
-                                r"\bhousing\b", r"\bflats?\b"),
             "School / College": (r"\bschool\b", r"\bcollege\b", r"\buniversity\b",
                                  r"\binstitut", r"\bcampus\b"),
             "Hospital": (r"\bhospital\b", r"\bclinic\b", r"\bnursing\s*home\b"),
         },
-        required=False,
+        # Required: subsidy eligibility turns entirely on this answer, and a
+        # wrong guess would have someone budgeting for money that never comes.
+        required=True,
     ),
     Slot(
         name="dcr",
@@ -221,6 +230,24 @@ SOLAR_SLABS: dict[str, tuple[Slab, ...]] = {
     ),
 }
 
+def _subsidy_cards(state: dict, facts: dict) -> list[dict]:
+    """The government subsidy this buyer can expect, if any.
+
+    Only shown once we know the site type, because eligibility turns on it
+    entirely — and for a commercial site the honest answer is "none", which is
+    worth saying plainly rather than leaving them to assume otherwise.
+    """
+    from . import subsidy as scheme
+
+    consumer = scheme.consumer_type_for(state.get("site_type"))
+    if consumer is None:
+        return []
+    system_kw = float(state.get("quantity") or 0)
+    if system_kw <= 0:
+        return []
+    return [scheme.to_card(scheme.calculate(system_kw, consumer), system_kw)]
+
+
 CATEGORY = Category(
     key="SOLAR",
     label="Solar panels",
@@ -233,7 +260,7 @@ CATEGORY = Category(
         "What system size do you need, in kW?\n\n"
         "Roughly 1 kW needs about 60 sq ft of shade-free roof."
     ),
-    quantity_chips=("10 kW", "25 kW", "50 kW", "100 kW", "250 kW", "500 kW+"),
+    quantity_chips=("3.3 kW", "5 kW", "10 kW", "25 kW", "50 kW", "100 kW", "250 kW+"),
     slots=SOLAR_SLOTS,
     grouping_fields=("module_type", "scope", "mounting"),
     slabs=SOLAR_SLABS,
@@ -262,7 +289,8 @@ CATEGORY = Category(
         (r"(\d+(?:\.\d+)?)\s*(?:kw|kwp|kilowatts?)\b", 1.0),
     ),
     product_noun="Solar",
-    min_group_quantity=10,
+    extra_cards=lambda state, facts: _subsidy_cards(state, facts),
+    min_group_quantity=3.3,
     brand_field="preferred_brand",
     intro=(
         "Solar is the strongest category for group buying — module prices move "

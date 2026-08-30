@@ -208,6 +208,39 @@
     return node;
   }
 
+  function subsidyCard(c) {
+    // Not eligible is a real, useful answer — say it plainly rather than
+    // leaving someone to assume a subsidy is coming.
+    if (!c.eligible) {
+      return addCard(`<div class="card">
+        <h3>Government subsidy</h3>
+        <div class="label">${esc(c.scheme)}</div>
+        <div class="pending-quote">
+          <strong>Not available for this site</strong>
+          <span>${esc(c.note)}</span>
+        </div>
+        ${c.alternatives && c.alternatives.length ? `
+          <div class="label" style="margin-top:12px">What you can use instead</div>
+          <ul>${c.alternatives.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+      </div>`);
+    }
+
+    return addCard(`<div class="card">
+      <h3>Government subsidy</h3>
+      <div class="label">${esc(c.scheme)}</div>
+      <div class="stat">
+        <div class="k">You could claim up to</div>
+        <div class="pricerow"><span class="price">${esc(c.amount_text)}</span></div>
+        <div class="sub">${esc(c.basis)}</div>
+      </div>
+      ${c.note ? `<p class="indicative">${esc(c.note)}</p>` : ""}
+      ${c.conditions && c.conditions.length ? `
+        <div class="label" style="margin-top:12px">Subject to</div>
+        <ul>${c.conditions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <p class="indicative">${esc(c.disclaimer)}</p>
+    </div>`);
+  }
+
   function slabCard(c) {
     return addCard(`<div class="card">
       <h3>Price levels</h3>
@@ -226,6 +259,7 @@
       case "share": return shareCard(card);
       case "done": return doneCard(card);
       case "status": return statusCard(card);
+      case "subsidy": return subsidyCard(card);
       case "slabs": return slabCard(card);
       default: return null;
     }

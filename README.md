@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 380 tests
+python -m pytest        # 420 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -361,6 +361,26 @@ and longer phrases are matched before their prefixes so "do sau" is not read as
 
 ---
 
+## Which categories are offered
+
+`ENABLED_CATEGORIES` decides what the chatbot shows. It currently ships as
+`PLY` — **plywood only**. Every other category stays in the codebase and keeps
+working for intents already captured against it; it is simply not offered.
+Re-enable one by naming it (`ENABLED_CATEGORIES=PLY,AC`), or `*` for all.
+
+`catalog.get()` deliberately resolves hidden categories too, so the back office
+can still render a group created before a category was withdrawn.
+
+### Where "how many?" is asked
+
+`quantity_priority` places the quantity question among the specification
+questions. Most products are counted first ("I need 2 AC"), so the default puts
+it before everything. Plywood sets it to 44 — after grade, thickness and sheet
+size, before location — because a sheet count only means something once the
+board is settled.
+
+---
+
 ## Any product
 
 AC and refrigerators have negotiated slab tables. Everything else goes through the
@@ -405,6 +425,7 @@ its own questions and standing slab table — graduates to its own module.
 
 | | Flow | Grouped by |
 | --- | --- | --- |
+| 🪵 **Plywood** | grade, thickness, sheet size, core, finish, brand, application, ISI | grade + thickness + size |
 | ❄️ **Air Conditioner** | capacity, split/window, inverter, brand, star rating | capacity + type + inverter |
 | 🧊 **Refrigerator** | size in litres, door type, direct-cool/frost-free, brand, star rating, use | size + door type + defrost |
 | 📺 **Television** | screen size, LED/QLED/OLED, resolution, smart, brand, use, wall mount | size + panel + resolution |
