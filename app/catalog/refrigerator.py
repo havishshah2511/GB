@@ -187,6 +187,7 @@ FRIDGE_SLABS: dict[str, tuple[Slab, ...]] = {
 CATEGORY = Category(
     key="FRIDGE",
     label="Refrigerator",
+    plural_label="refrigerators",
     emoji="🧊",
     unit="fridge",
     unit_plural="fridges",

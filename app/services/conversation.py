@@ -181,7 +181,7 @@ def opening(conversation: dict[str, Any], state: dict[str, Any] | None = None) -
             {
                 "role": "bot",
                 "text": (
-                    f"Hi 👋\n\nI can help you get a better price on **{sole.label.lower()}** "
+                    f"Hi 👋\n\nI can help you get a better price on **{sole.in_sentence()}** "
                     f"by combining your order with other buyers in your city.\n\n"
                     f"It takes a minute — then you can close this page and we'll message "
                     f"you when the group price improves."

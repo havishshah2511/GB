@@ -37,7 +37,7 @@ services:
       # links are correct on the first boot without anyone editing anything.
       # Categories offered to customers; others stay hidden. "*" for all.
       - key: ENABLED_CATEGORIES
-        value: "PLY"
+        value: "AC"
       - key: SEED_DEMO_DATA
         value: "0"
       - key: ENABLE_BACKGROUND_WORKER

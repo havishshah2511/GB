@@ -98,7 +98,7 @@ class Settings:
     # Which product categories the chatbot offers, in order. Everything else
     # stays in the codebase but is hidden -- flip a name back in here to
     # re-enable it, no code change needed. "*" enables every module.
-    ENABLED_CATEGORIES: str = os.getenv("ENABLED_CATEGORIES", "PLY")
+    ENABLED_CATEGORIES: str = os.getenv("ENABLED_CATEGORIES", "AC")
 
     # Off by default: the back office must only ever show real customer demand.
     # Set SEED_DEMO_DATA=1 on a throwaway database if you want the sample rows.

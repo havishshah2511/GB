@@ -78,6 +78,10 @@ class Category:
     # first ("I need 2 AC"). Raise it for products where the specification has
     # to be settled before a quantity means anything (plywood).
     quantity_priority: int = 15
+    # How the category reads mid-sentence: "a better price on ___". The label
+    # alone gives "a better price on air conditioner", so each category words
+    # its own. Mass nouns (plywood) stay singular.
+    plural_label: str = ""
     # words/regex that route a free-text message to this category
     triggers: tuple[str, ...] = ()
     # Regexes that VETO a trigger match. A dedicated flow should only claim the
@@ -107,6 +111,10 @@ class Category:
 
     def noun(self) -> str:
         return self.product_noun or self.unit
+
+    def in_sentence(self) -> str:
+        """The category as it reads inside a sentence."""
+        return (self.plural_label or self.label).lower()
 
     # -- spec helpers ------------------------------------------------------ #
     def spec_slots(self) -> tuple[Slot, ...]:

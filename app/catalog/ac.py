@@ -154,6 +154,7 @@ AC_SLABS: dict[str, tuple[Slab, ...]] = {
 CATEGORY = Category(
     key="AC",
     label="Air Conditioner",
+    plural_label="air conditioners",
     emoji="❄️",
     unit="AC",
     unit_plural="ACs",

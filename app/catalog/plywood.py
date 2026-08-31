@@ -229,6 +229,7 @@ PLYWOOD_SLABS: dict[str, tuple[Slab, ...]] = {
 CATEGORY = Category(
     key="PLY",
     label="Plywood",
+    plural_label="plywood",
     emoji="🪵",
     unit="sheet",
     unit_plural="sheets",

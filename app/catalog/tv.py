@@ -193,6 +193,7 @@ TV_SLABS: dict[str, tuple[Slab, ...]] = {
 CATEGORY = Category(
     key="TV",
     label="Television",
+    plural_label="televisions",
     emoji="📺",
     unit="TV",
     unit_plural="TVs",

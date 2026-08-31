@@ -251,6 +251,7 @@ def _subsidy_cards(state: dict, facts: dict) -> list[dict]:
 CATEGORY = Category(
     key="SOLAR",
     label="Solar panels",
+    plural_label="solar panels",
     emoji="☀️",
     # Capacity, not panel count: it is how the customer thinks and how a
     # supplier quotes. "kW" reads the same at any quantity.
