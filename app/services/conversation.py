@@ -128,8 +128,9 @@ def state_of(conversation: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # opening
 # --------------------------------------------------------------------------- #
-def opening(conversation: dict[str, Any]) -> dict[str, Any]:
+def opening(conversation: dict[str, Any], state: dict[str, Any] | None = None) -> dict[str, Any]:
     """Screen 1 / screen 3 greeting."""
+    state = state if state is not None else {}
     messages: list[dict[str, Any]] = []
     landing_code = conversation.get("landing_group_code")
     group = groups.get_by_code(landing_code) if landing_code else None
@@ -169,7 +170,30 @@ def opening(conversation: dict[str, Any]) -> dict[str, Any]:
                 ],
             ),
         }
-    else:
+    sole = catalog.sole_category()
+    if group is None and sole is not None:
+        # One product on offer: asking "what are you looking to buy?" and
+        # showing a single chip is a step that answers itself. Say what we do
+        # and go straight to the first real question.
+        state["category"] = sole.key
+        state["_auto_category"] = True
+        messages.append(
+            {
+                "role": "bot",
+                "text": (
+                    f"Hi 👋\n\nI can help you get a better price on **{sole.label.lower()}** "
+                    f"by combining your order with other buyers in your city.\n\n"
+                    f"It takes a minute — then you can close this page and we'll message "
+                    f"you when the group price improves."
+                ),
+            }
+        )
+        first = next_question(state)
+        if first is not None and first.text:
+            messages.append({"role": "bot", "text": first.text})
+        return {"messages": messages, "question": first}
+
+    if group is None:
         messages.append(
             {
                 "role": "bot",
@@ -249,11 +273,17 @@ def _category_question(category: catalog.Category, slot: catalog.Slot,
 def next_question(state: dict[str, Any]) -> Question | None:
     """The single highest-priority unanswered slot. Never asks twice."""
     if not state.get("category"):
-        return Question(
-            slot="category",
-            text="What are you looking to buy?",
-            chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
-        )
+        sole = catalog.sole_category()
+        if sole is None:
+            return Question(
+                slot="category",
+                text="What are you looking to buy?",
+                chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
+            )
+        # Nothing to choose between, so choose it and move on. Also covers the
+        # paths that clear the requirement, like "change product".
+        state["category"] = sole.key
+        state["_auto_category"] = True
 
     category = catalog.require(state["category"])
 
@@ -276,10 +306,13 @@ def next_question(state: dict[str, Any]) -> Question | None:
             if category.open_ended and state.get("product_name")
             else category.label.lower()
         )
+        # No echo when we picked the product for them -- "Sure — plywood 👍"
+        # in reply to a message they never sent reads as a non-sequitur.
+        preamble = "" if state.get("_auto_category") else f"Sure — {what} 👍\n\n"
         return Question(
             slot="mobile",
             text=(
-                f"Sure — {what} 👍\n\nWhat's your mobile number?\n\n"
+                f"{preamble}What's your mobile number?\n\n"
                 "We'll use it to check if you already have a request with us, and to "
                 "message you when your group price improves."
             ),
@@ -946,11 +979,11 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
 
     # --- first contact: greet, ask nothing else ---------------------------- #
     if stage == STAGE_GREETING and not text.strip():
-        intro = opening(conversation)
+        intro = opening(conversation, state)
         messages = intro["messages"]
         question = intro["question"]
         history += messages
-        state["_expecting"] = question.slot
+        state["_expecting"] = question.slot if question else None
         _save(conversation, state, history, STAGE_COLLECTING)
         return _respond(session_id, STAGE_COLLECTING, messages, question, state, base_url)
 

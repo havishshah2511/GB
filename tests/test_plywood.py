@@ -48,6 +48,30 @@ def test_hidden_categories_still_resolve_for_historical_data():
     assert "PLY" in catalog.ALL_CATEGORIES
 
 
+def test_a_single_category_is_chosen_for_the_customer(chat, monkeypatch):
+    """With one product there is nothing to choose, so the bot opens with the
+    first real question instead of a menu of one."""
+    import app.catalog as cat
+
+    monkeypatch.setattr(cat, "CATEGORIES", {"PLY": cat.ALL_CATEGORIES["PLY"]})
+
+    reply = chat("solo1", "")
+    assert reply["question"]["slot"] != "category", "asked which product when there is only one"
+    assert reply["question"]["slot"] == "mobile"
+    assert reply["chips"] == [], "no product chips to pick from"
+
+    blurb = " ".join(m.get("text", "") for m in reply["messages"])
+    assert "plywood" in blurb.lower(), "should say what it helps with"
+    assert "Sure — plywood" not in blurb, "no echo of a message the customer never sent"
+
+
+def test_the_menu_returns_when_more_than_one_category_is_offered(chat):
+    """The suite enables everything, so the choice is still shown."""
+    reply = chat("solo2", "")
+    assert reply["question"]["slot"] == "category"
+    assert len(reply["chips"]) > 1
+
+
 # --------------------------------------------------------------------------- #
 # routing
 # --------------------------------------------------------------------------- #

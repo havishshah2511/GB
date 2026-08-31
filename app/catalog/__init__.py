@@ -77,6 +77,16 @@ def require(key: str | None) -> Category:
     return category
 
 
+def sole_category() -> Category | None:
+    """The only category on offer, when there is exactly one.
+
+    With a single product there is nothing to choose, so the bot skips "what
+    are you looking to buy?" and opens with the first real question.
+    """
+    offered = list(CATEGORIES.values())
+    return offered[0] if len(offered) == 1 else None
+
+
 def all_categories() -> list[Category]:
     return list(CATEGORIES.values())
 
@@ -142,7 +152,7 @@ def describe(category_key: str, spec: dict[str, Any]) -> str:
 
 
 __all__ = [
-    "Category", "Slab", "Slot", "CATEGORIES", "FALLBACK_KEY", "get", "require",
-    "all_categories", "detect", "looks_like_a_product", "quick_options",
-    "slot_labels", "describe",
+    "Category", "Slab", "Slot", "CATEGORIES", "ALL_CATEGORIES", "FALLBACK_KEY",
+    "get", "require", "all_categories", "sole_category", "detect",
+    "looks_like_a_product", "quick_options", "slot_labels", "describe",
 ]

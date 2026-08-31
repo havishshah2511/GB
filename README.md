@@ -37,7 +37,7 @@ demand. Set `SEED_DEMO_DATA=1` on a throwaway database if you want sample rows t
 look at. No database server, no build step, no API key required.
 
 ```bash
-python -m pytest        # 420 tests
+python -m pytest        # 422 tests
 RELOAD=1 python run.py  # auto-reload during development
 ```
 
@@ -370,6 +370,8 @@ Re-enable one by naming it (`ENABLED_CATEGORIES=PLY,AC`), or `*` for all.
 
 `catalog.get()` deliberately resolves hidden categories too, so the back office
 can still render a group created before a category was withdrawn.
+
+With **exactly one** category enabled the bot skips the product question entirely — a menu of one answers itself — and opens on the first real question. Enable a second and the choice comes back on its own.
 
 ### Where "how many?" is asked
 
