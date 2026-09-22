@@ -35,21 +35,55 @@
 
   const scroll = () => { log.scrollTop = log.scrollHeight; };
 
+  // ------------------------------------------------------- message furniture
+  const clock = (d = new Date()) =>
+    d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  /** Timestamp, plus delivery ticks on the customer's own messages. */
+  function meta(role) {
+    const ticks = role === "user"
+      ? '<span class="ticks read" aria-hidden="true">✓✓</span>'
+      : "";
+    return `<span class="meta">${esc(clock())}${ticks}</span>`;
+  }
+
+  let dayShown = false;
+  function markDay() {
+    if (dayShown) return;
+    dayShown = true;
+    log.appendChild(el('<div class="day">Today</div>'));
+  }
+
   function addBubble(role, text) {
-    const node = el(`<div class="msg ${role}"><div class="bubble">${md(text)}</div></div>`);
+    markDay();
+    const node = el(
+      `<div class="msg ${role}"><div class="bubble">${md(text)}${meta(role)}</div></div>`);
     log.appendChild(node);
     scroll();
     return node;
   }
 
   function addCard(html) {
+    markDay();
     const node = el(`<div class="msg bot">${html}</div>`);
+    // A card is still a message, so it carries a timestamp like any other.
+    const card = node.querySelector(".card");
+    if (card) card.insertAdjacentHTML("beforeend", meta("bot"));
     log.appendChild(node);
     scroll();
     return node;
   }
 
+  // The header doubles as a presence line, the way a messenger does.
+  const presence = document.getElementById("presence");
+  function setPresence(text, busyState) {
+    if (!presence) return;
+    presence.textContent = text;
+    presence.classList.toggle("busy", !!busyState);
+  }
+
   function typing(on) {
+    setPresence(on ? "typing…" : "online", on);
     const existing = document.getElementById("typing");
     if (!on) { if (existing) existing.remove(); return; }
     if (existing) return;
@@ -273,7 +307,11 @@
     if (s.product) bits.push(s.product);
     if (s.city) bits.push(s.area ? `${s.area}, ${s.city}` : s.city);
     if (s.desired_purchase_date) bits.push(`by ${s.desired_purchase_date}`);
-    progress.innerHTML = bits.map((b) => `<span>${esc(b)}</span>`).join("");
+    // A lone product name says nothing the header doesn't already say, so the
+    // strip stays hidden until there is a requirement worth pinning.
+    progress.innerHTML = bits.length > 1
+      ? bits.map((b) => `<span>${esc(b)}</span>`).join("")
+      : "";
   }
 
   // ------------------------------------------------------------------ chips
