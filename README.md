@@ -364,9 +364,9 @@ and longer phrases are matched before their prefixes so "do sau" is not read as
 ## Which categories are offered
 
 `ENABLED_CATEGORIES` decides what the chatbot shows. It currently ships as
-`AC` — **air conditioners only**. Every other category stays in the codebase and keeps
+`PLY` — **plywood only**. Every other category stays in the codebase and keeps
 working for intents already captured against it; it is simply not offered.
-Re-enable one by naming it (`ENABLED_CATEGORIES=AC,PLY`), or `*` for all.
+Re-enable one by naming it (`ENABLED_CATEGORIES=PLY,AC`), or `*` for all.
 
 `catalog.get()` deliberately resolves hidden categories too, so the back office
 can still render a group created before a category was withdrawn.
