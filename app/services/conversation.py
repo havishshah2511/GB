@@ -375,6 +375,93 @@ def next_question(state: dict[str, Any]) -> Question | None:
     return candidates[0][1]
 
 
+# --------------------------------------------------------------------------- #
+# companion products
+# --------------------------------------------------------------------------- #
+ADDON_DONE = "__addons_done__"
+
+
+def _chosen_addons(state: dict[str, Any]) -> list[str]:
+    return list(state.get("addons") or [])
+
+
+def addon_question(state: dict[str, Any]) -> Question | None:
+    """Offer the companion products this category usually sells alongside.
+
+    Asked once the requirement is understood, so it reads as a helpful nudge
+    rather than an upsell before we have even listened. Multi-select: each tap
+    adds one and the remaining options come back, until they say they're done.
+    """
+    category = catalog.get(state.get("category"))
+    if category is None or not category.addons or state.get("_addons_done"):
+        return None
+
+    chosen = _chosen_addons(state)
+    remaining = [a for a in category.addons if a.key not in chosen]
+    if not remaining:
+        return None
+
+    chips = [_chip(a.chip(), f"addon:{a.key}") for a in remaining]
+    if chosen:
+        chips.append(_chip("✅ That's everything", ADDON_DONE))
+        picked = ", ".join(category.addon_labels(chosen))
+        text = f"Added **{picked}** 👍\n\nAnything else with it?"
+    else:
+        chips.append(_chip("No thanks", ADDON_DONE))
+        text = category.addon_prompt or (
+            "Anything else you need with it? We'll ask the supplier to quote "
+            "these alongside your order."
+        )
+    return Question(slot="_addons", text=text, chips=chips, optional=True)
+
+
+#: "No thanks" at this step means "no add-ons", not "end the conversation" --
+#: the same words mean something different here than anywhere else.
+_ADDON_NO_MORE = re.compile(
+    r"^\s*(no|no thanks|nope|nothing|none|nahi|nai|bas|bas itna|done|skip|"
+    r"that'?s (it|all|everything)|i'?m good|no more)\b[\s.!]*$",
+    re.I,
+)
+
+
+def read_addon_answer(state: dict[str, Any], text: str) -> str | None:
+    """Interpret an answer at the companion-product step.
+
+    Returns "added", "done", or None when the message is not about add-ons at
+    all -- in which case the caller lets it fall through to the ordinary
+    command handling, so "cancel my request" still cancels here.
+    """
+    category = catalog.get(state.get("category"))
+    if category is None:
+        return "done"
+
+    raw = (text or "").strip()
+    if raw == ADDON_DONE or _ADDON_NO_MORE.match(raw):
+        return "done"
+
+    chosen = _chosen_addons(state)
+    matched = False
+
+    if raw.startswith("addon:"):
+        key = raw.split(":", 1)[1]
+        if category.addon(key) and key not in chosen:
+            chosen.append(key)
+            matched = True
+    else:
+        # Typed rather than tapped: "fevicol and nails", "glue bhi chahiye".
+        for addon in category.addons:
+            if addon.key in chosen:
+                continue
+            if any(re.search(p, raw, re.I) for p in addon.synonyms):
+                chosen.append(addon.key)
+                matched = True
+
+    if not matched:
+        return None
+    state["addons"] = chosen
+    return "added"
+
+
 def contact_question(state: dict[str, Any]) -> Question | None:
     """The mobile number is collected up front; only the name is left here."""
     if not state.get("name"):
@@ -1025,6 +1112,31 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
         ]
         return payload
 
+    # --- picking companion products ---------------------------------------- #
+    # Ahead of the command handler: at this step "no thanks" means "no add-ons",
+    # not "end the chat". Anything that isn't about add-ons falls through, so
+    # "cancel my request" still cancels here.
+    if expecting == "_addons":
+        answer = read_addon_answer(state, text)
+        if answer is not None:
+            if answer == "done":
+                state["_addons_done"] = True
+            question = addon_question(state)
+            if question is not None:
+                state["_expecting"] = question.slot
+                messages.append({"role": "bot", "text": question.text})
+                history += messages
+                _save(conversation, state, history, STAGE_CONTACT)
+                return _respond(session_id, STAGE_CONTACT, messages, question, state, base_url)
+
+            state["_addons_done"] = True
+            result = finalise(conversation, state, base_url)
+            messages += result["messages"]
+            history += messages
+            state = result["state"]
+            _save(conversation, state, history, STAGE_DONE)
+            return _respond(session_id, STAGE_DONE, messages, None, state, base_url)
+
     command = detect_command(text, expecting)
     if command:
         outcome = handle_command(command, state, base_url)
@@ -1228,6 +1340,10 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
         stage = STAGE_CONTACT
         question = contact_question(state)
 
+    # Companion products come last: offer them once we understand the order.
+    if question is None:
+        question = addon_question(state)
+
     if question is None:
         # Everything collected -> create the intent and show the group.
         result = finalise(conversation, state, base_url)
@@ -1375,6 +1491,25 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
             }
         )
         messages.append({"role": "bot", "card": _share_card(group, customer["id"], base_url, qty)})
+
+    # Confirm the basket, without pricing it -- nobody has quoted for these.
+    picked = category.addon_labels(_chosen_addons(state))
+    if picked:
+        messages.append(
+            {
+                "role": "bot",
+                "card": {
+                    "type": "addons",
+                    "title": "Also in your request",
+                    "items": picked,
+                    "note": (
+                        "We'll ask the supplier to quote these alongside the "
+                        f"{category.in_sentence()}, so the group rate applies to "
+                        "them too. Prices come once the quote is in."
+                    ),
+                },
+            }
+        )
 
     messages.append({"role": "bot", "card": _done_card(state)})
 

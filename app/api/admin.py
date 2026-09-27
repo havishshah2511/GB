@@ -281,6 +281,7 @@ def group_detail(group_ref: str) -> dict[str, Any]:
     members = groups.members(group["id"], active_only=False)
     return {
         **groups.summary_for_admin(group),
+        "addon_demand": groups.addon_demand(group["id"]),
         "members": [
             {
                 **m,

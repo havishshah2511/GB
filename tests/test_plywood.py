@@ -150,7 +150,12 @@ def test_quantity_is_asked_after_the_specification_and_before_the_city(chat):
         f"quantity must follow the product detail: {order}"
     assert order.index("quantity") < order.index("city"), \
         f"quantity must come before location: {order}"
-    assert order[-1] == "name"
+    # The name is the last thing asked about the requirement itself; companion
+    # products are offered after it (and may be asked repeatedly, once per
+    # pick, until the buyer is done).
+    assert "_addons" in order
+    assert order.index("name") < order.index("_addons")
+    assert set(order[order.index("_addons"):]) == {"_addons"}
 
 
 # --------------------------------------------------------------------------- #

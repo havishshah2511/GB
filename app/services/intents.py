@@ -168,6 +168,11 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
     }
     if category.open_ended and (state.get("unit") or "").strip():
         spec["unit"] = state["unit"].strip()
+    # Companion products ride along on the intent: they are part of this
+    # buyer's basket, not part of what defines the group.
+    addons = [k for k in (state.get("addons") or []) if category.addon(k)]
+    if addons:
+        spec["addons"] = addons
     desired = parse_date(state.get("desired_purchase_date"))
     maximum = parse_date(state.get("maximum_purchase_date")) or desired
     quantity = to_float(state.get("quantity"), 0) or 0.0

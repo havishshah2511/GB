@@ -275,6 +275,14 @@
     </div>`);
   }
 
+  function addonsCard(c) {
+    return addCard(`<div class="card">
+      <h3>${esc(c.title)}</h3>
+      <ul>${(c.items || []).map((i) => `<li>${esc(i)}</li>`).join("")}</ul>
+      <p class="indicative">${esc(c.note)}</p>
+    </div>`);
+  }
+
   function slabCard(c) {
     return addCard(`<div class="card">
       <h3>Price levels</h3>
@@ -294,6 +302,7 @@
       case "done": return doneCard(card);
       case "status": return statusCard(card);
       case "subsidy": return subsidyCard(card);
+      case "addons": return addonsCard(card);
       case "slabs": return slabCard(card);
       default: return null;
     }

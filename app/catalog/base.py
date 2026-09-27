@@ -50,6 +50,30 @@ class Slot:
 
 
 @dataclass(frozen=True)
+class Addon:
+    """A companion product the same purchase usually needs.
+
+    Someone ordering plywood almost always needs adhesive and hardware in the
+    same week, from the same kind of supplier. Capturing that turns one line
+    item into a basket the operator can negotiate as a bundle -- and it is
+    demand we would otherwise never hear about.
+
+    Deliberately no price: add-ons are quoted with the main order, and
+    inventing a number for them would break the rule the whole app rests on.
+    """
+    key: str
+    label: str
+    emoji: str = ""
+    # Shown under the label so the customer knows what they are agreeing to.
+    hint: str = ""
+    # Regexes that recognise it in free text ("bhi chahiye fevicol").
+    synonyms: tuple[str, ...] = ()
+
+    def chip(self) -> str:
+        return f"{self.emoji} {self.label}".strip()
+
+
+@dataclass(frozen=True)
 class Slab:
     minimum_qty: int
     maximum_qty: int | None
@@ -82,6 +106,17 @@ class Category:
     # alone gives "a better price on air conditioner", so each category words
     # its own. Mass nouns (plywood) stay singular.
     plural_label: str = ""
+    # Companion products offered once the main requirement is captured.
+    addons: tuple[Addon, ...] = ()
+    # The sentence that introduces them, e.g. "Most plywood buyers also need…".
+    addon_prompt: str = ""
+
+    def addon(self, key: str) -> Addon | None:
+        return next((a for a in self.addons if a.key == key), None)
+
+    def addon_labels(self, keys: list[str]) -> list[str]:
+        found = (self.addon(k) for k in keys)
+        return [a.label for a in found if a]
     # words/regex that route a free-text message to this category
     triggers: tuple[str, ...] = ()
     # Regexes that VETO a trigger match. A dedicated flow should only claim the

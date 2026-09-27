@@ -373,6 +373,25 @@ can still render a group created before a category was withdrawn.
 
 With **exactly one** category enabled the bot skips the product question entirely — a menu of one answers itself — and opens on the first real question. Enable a second and the choice comes back on its own.
 
+### Companion products
+
+A category can declare `addons` -- what the same purchase usually needs. Plywood
+offers adhesive (Fevicol), nails, screws, hinges, laminate and edge banding.
+
+They are offered **after** the requirement is understood, so it reads as a
+helpful nudge rather than an upsell before we have listened. Each tap adds one
+and the rest come back, until the buyer says they are done; typed answers work
+too, including trade words ("fevicol", "sunmica", "kabza").
+
+No price is ever attached: nobody has quoted for them, so the chat says they
+will be quoted alongside the main order and leaves it there.
+
+What it is for is the back office. A group's detail view shows **Also wanted
+with this order** -- how many of its buyers asked for each companion product.
+That is the bundle to put in front of a supplier: "500 sheets, and 18 of these
+22 buyers also want adhesive". Buyer counts, not quantities -- nobody was asked
+how much glue they need, and guessing would invent demand.
+
 ### Where "how many?" is asked
 
 `quantity_priority` places the quantity question among the specification

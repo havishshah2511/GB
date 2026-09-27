@@ -562,6 +562,41 @@ def to_api(group: dict[str, Any], customer_qty: float = 0) -> dict[str, Any]:
     }
 
 
+def addon_demand(group_id: str) -> list[dict[str, Any]]:
+    """Companion products the members of this group asked for.
+
+    This is the bundle to put in front of a supplier: "500 sheets, and 18 of
+    these 22 buyers also want adhesive". Counts of buyers, not quantities --
+    nobody was asked how much glue they need, and guessing would be inventing
+    demand that does not exist.
+    """
+    group = get(group_id)
+    if group is None:
+        return []
+    category = catalog.get(group["product_category"])
+    if category is None or not category.addons:
+        return []
+
+    tally: dict[str, int] = {}
+    for member in members(group_id, active_only=True):
+        for key in loads(member.get("specifications_json"), {}).get("addons", []) or []:
+            tally[key] = tally.get(key, 0) + 1
+
+    rows = []
+    for addon in category.addons:
+        count = tally.get(addon.key, 0)
+        if count:
+            rows.append({
+                "key": addon.key,
+                "label": addon.label,
+                "emoji": addon.emoji,
+                "hint": addon.hint,
+                "buyers": count,
+            })
+    rows.sort(key=lambda r: -r["buyers"])
+    return rows
+
+
 def summary_for_admin(group: dict[str, Any]) -> dict[str, Any]:
     agg = _aggregate(group["id"])
     referral_qty = query_one(

@@ -10,7 +10,46 @@ something once thickness and size are settled.
 """
 from __future__ import annotations
 
-from .base import Category, Slab, Slot
+from .base import Addon, Category, Slab, Slot
+
+# What actually leaves the shop with a plywood order. Offering these turns one
+# line item into a basket the operator can negotiate as a bundle, and captures
+# demand we would otherwise never hear about.
+PLYWOOD_ADDONS = (
+    Addon(
+        key="adhesive", label="Adhesive", emoji="🧴",
+        hint="Fevicol / synthetic resin glue",
+        synonyms=(r"\bfevicol\b", r"\bfevi\b", r"\badhesive\b", r"\bglue\b",
+                  r"\bgond\b", r"\bsr\s*998\b", r"\bmarine\s*glue\b"),
+    ),
+    Addon(
+        key="nails", label="Nails & pins", emoji="📌",
+        hint="Wire nails, panel pins, brad nails",
+        synonyms=(r"\bnails?\b", r"\bpins?\b", r"\bkeel\b", r"\bbrad\b",
+                  r"\bstaples?\b"),
+    ),
+    Addon(
+        key="screws", label="Screws", emoji="🔩",
+        hint="Wood screws, self-tapping screws",
+        synonyms=(r"\bscrews?\b", r"\bpech\b", r"\bfasteners?\b"),
+    ),
+    Addon(
+        key="hardware", label="Hinges & fittings", emoji="🚪",
+        hint="Hinges, channels, handles, locks",
+        synonyms=(r"\bhinges?\b", r"\bfittings?\b", r"\bchannels?\b",
+                  r"\bhandles?\b", r"\blocks?\b", r"\bhardware\b", r"\bkabza\b"),
+    ),
+    Addon(
+        key="laminate", label="Laminate / sunmica", emoji="🎨",
+        hint="Decorative laminate sheets",
+        synonyms=(r"\blaminate\b", r"\bsunmica\b", r"\bmica\b", r"\bdeco\b"),
+    ),
+    Addon(
+        key="edge_band", label="Edge banding tape", emoji="🎗️",
+        hint="PVC edge banding / beading",
+        synonyms=(r"\bedge\s*band", r"\bbeading\b", r"\bpvc\s*tape\b", r"\bpatti\b"),
+    ),
+)
 
 # Volume ladder, applied to a per-sheet base price. Expressing it as one curve
 # keeps a dozen configurations auditable instead of ninety hand-typed numbers.
@@ -265,6 +304,13 @@ CATEGORY = Category(
     ),
     # Name the product in the label, not the counting unit ("... 8 x 4 ft sheet").
     product_noun="Plywood",
+    addons=PLYWOOD_ADDONS,
+    addon_prompt=(
+        "One last thing 👇\n\n"
+        "Most plywood buyers need a few of these in the same order. "
+        "Adding them costs nothing now — we'll ask the supplier to quote them "
+        "with the board, so the group gets a better rate on those too."
+    ),
     min_group_quantity=10,
     brand_field="preferred_brand",
     intro=(

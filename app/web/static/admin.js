@@ -343,6 +343,19 @@
       <h2>Customers</h2>
       <div class="panel">${table(["Intent", "Customer", { label: "Qty", num: 1 }, "Strength", "Status", "Area", "Window", "Brand"], memberRows)}</div>
 
+      ${(g.addon_demand || []).length ? `
+        <h2>Also wanted with this order</h2>
+        <p class="hint">Buyers in this group who asked for a companion product.
+          Worth quoting as one bundle.</p>
+        <div class="panel">${table(
+          ["Product", { label: "Buyers", num: 1 }, "Share of group"],
+          g.addon_demand.map((a) => `<tr>
+            <td>${esc(a.emoji)} <strong>${esc(a.label)}</strong>
+                <div class="hint">${esc(a.hint)}</div></td>
+            <td class="num">${num(a.buyers)}</td>
+            <td style="min-width:120px">${progressBar(a.buyers, 0, g.customers || a.buyers, true)}</td>
+          </tr>`))}</div>` : ""}
+
       <h2>Pricing slabs</h2>
       <div class="panel">${table([{ label: "Min qty", num: 0 }, "Max qty", "Price", "State"], slabRows)}</div>
       <div class="toolbar" style="margin-top:10px">
