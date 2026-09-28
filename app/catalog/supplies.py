@@ -98,12 +98,15 @@ ADHESIVE = Category(
             label="Preferred brand",
             question="Any brand you usually buy?",
             priority=30,
-            chips=("Fevicol", "Jubilant", "Astral", "Pidilite", "No Preference"),
+            # Fevicol is Pidilite's, so listing both would be the same answer
+            # twice. The rest are the brands a dealer actually stocks beside it.
+            chips=("Fevicol", "Astral Resibond", "Euro 7000", "Jubilant",
+                   "No Preference"),
             synonyms={
-                "Fevicol": (r"\bfevicol\b", r"\bfevi\b"),
-                "Pidilite": (r"\bpidilite\b",),
-                "Jubilant": (r"\bjubilant\b",),
-                "Astral": (r"\bastral\b", r"\bresibond\b"),
+                "Fevicol": (r"\bfevicol\b", r"\bfevi\b", r"\bpidilite\b"),
+                "Astral Resibond": (r"\bastral\b", r"\bresibond\b"),
+                "Euro 7000": (r"\beuro\s*7000\b", r"\beuro\b"),
+                "Jubilant": (r"\bjubilant\b", r"\bjivanjor\b"),
                 "No Preference": (r"\bno\s*preference\b", r"\bany\b", r"\blocal\b"),
             },
             required=False,

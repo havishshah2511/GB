@@ -329,7 +329,19 @@
     (chips || []).forEach((c) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.textContent = c.label;
+      if (c.hint) {
+        // Two lines: the product, then an example of what it means.
+        b.classList.add("has-hint");
+        const name = document.createElement("span");
+        name.className = "chip-main";
+        name.textContent = c.label;
+        const hint = document.createElement("span");
+        hint.className = "chip-hint";
+        hint.textContent = c.hint;
+        b.append(name, hint);
+      } else {
+        b.textContent = c.label;
+      }
       b.addEventListener("click", () => submit(c.value, c.label));
       chipBar.appendChild(b);
     });

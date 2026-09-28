@@ -61,6 +61,12 @@ def test_companion_products_are_offered_after_the_requirement(chat):
     assert any("Nails" in l for l in labels)
     assert any("No thanks" in l for l in labels)
 
+    # Each one says what it means, by the name the trade uses. "Adhesive" on
+    # its own tells a buyer nothing.
+    hints = " ".join(c.get("hint", "") for c in reply["chips"])
+    assert "Fevicol" in hints, hints
+    assert "panel pins" in hints
+
     blurb = " ".join(m.get("text", "") for m in reply["messages"])
     assert "plywood" in blurb.lower()
 

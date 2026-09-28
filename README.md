@@ -383,6 +383,12 @@ helpful nudge rather than an upsell before we have listened. Each tap adds one
 and the rest come back, until the buyer says they are done; typed answers work
 too, including trade words ("fevicol", "sunmica", "kabza").
 
+Each chip carries its `hint` on a second line, in the words the trade uses —
+"Adhesive" on its own tells a buyer nothing, "Fevicol, white glue, synthetic
+resin" tells them exactly what they are picking. Naming a brand there is an
+example, not a commitment: the flow still asks which brand they want, and the
+group is quoted on whatever it actually buys.
+
 No price is ever attached: nobody has quoted for them, so the chat says they
 will be quoted alongside the main order and leaves it there.
 
@@ -719,3 +725,8 @@ registerable), OTP verification (schema and flow allow for it —
 `customers.mobile_verified`, `customers.mark_verified()`), staff accounts and
 roles, and Postgres. Set `ADMIN_PASSWORD`, `ADMIN_SECRET` and `PUBLIC_BASE_URL`
 before deploying, and put the app behind TLS.
+
+Templates reference `chat.js` and `chat.css` with a `?v=` build id taken from
+the static files' timestamps at import. Without it a returning visitor keeps
+the copy their browser cached and silently runs the previous deploy's front
+end — which looks exactly like a deploy that did not happen.

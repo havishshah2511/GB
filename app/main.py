@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
 from html import escape
 from typing import Any
@@ -33,11 +34,33 @@ WEB_DIR = BASE_DIR / "web"
 TEMPLATE_DIR = WEB_DIR / "templates"
 
 
+#: Matches the stylesheet and script tags in the templates.
+_STATIC_ASSET = re.compile(r"(/static/[A-Za-z0-9_.\-]+\.(?:css|js))")
+
+
+def _asset_version() -> str:
+    """A build id for the static files.
+
+    Without it a returning visitor keeps the chat.js their browser cached and
+    silently runs the previous deploy's front end. Computed once at import, so
+    it changes whenever a restart follows a change -- which is every deploy.
+    """
+    newest = 0.0
+    for path in (WEB_DIR / "static").glob("*"):
+        if path.is_file():
+            newest = max(newest, path.stat().st_mtime)
+    return f"{int(newest):x}"
+
+
+ASSET_VERSION = _asset_version()
+
+
 def render(name: str, **context: Any) -> HTMLResponse:
     """Minimal templating: `{{ key }}` substitution, no engine dependency."""
     html = (TEMPLATE_DIR / name).read_text(encoding="utf-8")
     for key, value in context.items():
         html = html.replace(f"{{{{ {key} }}}}", "" if value is None else str(value))
+    html = _STATIC_ASSET.sub(rf"\1?v={ASSET_VERSION}", html)
     return HTMLResponse(html)
 
 

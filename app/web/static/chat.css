@@ -411,6 +411,17 @@ table.slabs.mine td:last-child { text-align: right; font-weight: 600; }
 }
 .chips button:active { background: var(--brand-soft); }
 
+/* Companion products carry an example of what they mean -- "Adhesive" on its
+   own tells a buyer nothing, "Fevicol, synthetic resin glue" tells them
+   everything. Two lines, so the name still reads first. */
+.chips button.has-hint {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 1px; padding: 6px 14px; line-height: 1.25;
+}
+.chips button.has-hint .chip-hint {
+  font-size: 11px; font-weight: 500; opacity: .72;
+}
+
 .inputrow { display: flex; gap: 7px; align-items: center; }
 .inputrow input {
   flex: 1;

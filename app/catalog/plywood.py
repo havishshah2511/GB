@@ -22,7 +22,9 @@ from .base import Addon, Category, Slab, Slot
 PLYWOOD_ADDONS = (
     Addon(
         key="adhesive", label="Adhesive", emoji="🧴",
-        hint="Fevicol / synthetic resin glue",
+        # Named by the brand every carpenter in India says out loud. The flow
+        # still asks which brand they want and quotes whatever the group buys.
+        hint="Fevicol, white glue, synthetic resin",
         category_key="ADHESIVE",
         synonyms=(r"\bfevicol\b", r"\bfevi\b", r"\badhesive\b", r"\bglue\b",
                   r"\bgond\b", r"\bsr\s*998\b", r"\bmarine\s*glue\b"),

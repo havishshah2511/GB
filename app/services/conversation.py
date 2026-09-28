@@ -401,7 +401,12 @@ def addon_question(state: dict[str, Any]) -> Question | None:
     if not remaining:
         return None
 
-    chips = [_chip(a.chip(), f"addon:{a.key}") for a in remaining]
+    # The hint rides along: "Adhesive" on its own tells a buyer nothing,
+    # "Fevicol, synthetic resin glue" tells them exactly what they are picking.
+    chips = [
+        {**_chip(a.chip(), f"addon:{a.key}"), **({"hint": a.hint} if a.hint else {})}
+        for a in remaining
+    ]
     if chosen:
         chips.append(_chip("✅ That's everything", ADDON_DONE))
         picked = ", ".join(category.addon_labels(chosen))
