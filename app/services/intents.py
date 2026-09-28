@@ -173,6 +173,12 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
     addons = [k for k in (state.get("addons") or []) if category.addon(k)]
     if addons:
         spec["addons"] = addons
+    # A companion requirement ("2 inch wire nails") is an intent in its own
+    # right, in its own group. This is the only thread back to the order that
+    # prompted it, which is what lets the back office quote them as a bundle.
+    parent = str(state.get("for_group") or "").strip()
+    if parent:
+        spec["for_group"] = parent
     desired = parse_date(state.get("desired_purchase_date"))
     maximum = parse_date(state.get("maximum_purchase_date")) or desired
     quantity = to_float(state.get("quantity"), 0) or 0.0

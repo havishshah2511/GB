@@ -14,14 +14,17 @@ from .base import Category, Slab, Slot
 
 #: Every category that exists. Order matters: it is the order of the opening
 #: chips, and the open-ended fallback must come last.
-_MODULES = ("plywood", "ac", "refrigerator", "tv", "solar", "general")
+_MODULES = ("plywood", "ac", "refrigerator", "tv", "solar", "supplies", "general")
 
 #: All of them, whether or not they are currently offered. The back office
 #: still needs these to read historical intents from a category since hidden.
+#: A module exposes either one `CATEGORY` or a `CATEGORIES` tuple -- the
+#: companion products are a family and read better declared together.
 ALL_CATEGORIES: dict[str, Category] = {}
 for _name in _MODULES:
-    _cat = importlib.import_module(f"{__name__}.{_name}").CATEGORY
-    ALL_CATEGORIES[_cat.key] = _cat
+    _module = importlib.import_module(f"{__name__}.{_name}")
+    for _cat in getattr(_module, "CATEGORIES", None) or (_module.CATEGORY,):
+        ALL_CATEGORIES[_cat.key] = _cat
 
 
 def _enabled_keys() -> list[str]:
@@ -37,9 +40,14 @@ def _enabled_keys() -> list[str]:
     return known or list(ALL_CATEGORIES)
 
 
-#: The offered categories, in _MODULES order.
+#: The offered categories, in _MODULES order. Companion products are excluded
+#: whatever the config says: they are reached by picking them alongside a main
+#: order, never from the opening menu, so "what are you looking to buy?" does
+#: not offer edge banding tape next to plywood.
 CATEGORIES: dict[str, Category] = {
-    key: ALL_CATEGORIES[key] for key in ALL_CATEGORIES if key in set(_enabled_keys())
+    key: category
+    for key, category in ALL_CATEGORIES.items()
+    if key in set(_enabled_keys()) and not category.addon_only
 }
 
 #: The category used when a product matches no specific one.

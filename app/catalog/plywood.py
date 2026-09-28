@@ -15,38 +15,48 @@ from .base import Addon, Category, Slab, Slot
 # What actually leaves the shop with a plywood order. Offering these turns one
 # line item into a basket the operator can negotiate as a bundle, and captures
 # demand we would otherwise never hear about.
+#
+# Each one points at a category of its own: picking it opens a couple of
+# questions ("what size nails?") and the answers form a real buying group that
+# pools with every other buyer wanting the same thing in the same city.
 PLYWOOD_ADDONS = (
     Addon(
         key="adhesive", label="Adhesive", emoji="🧴",
         hint="Fevicol / synthetic resin glue",
+        category_key="ADHESIVE",
         synonyms=(r"\bfevicol\b", r"\bfevi\b", r"\badhesive\b", r"\bglue\b",
                   r"\bgond\b", r"\bsr\s*998\b", r"\bmarine\s*glue\b"),
     ),
     Addon(
         key="nails", label="Nails & pins", emoji="📌",
         hint="Wire nails, panel pins, brad nails",
+        category_key="NAILS",
         synonyms=(r"\bnails?\b", r"\bpins?\b", r"\bkeel\b", r"\bbrad\b",
                   r"\bstaples?\b"),
     ),
     Addon(
         key="screws", label="Screws", emoji="🔩",
         hint="Wood screws, self-tapping screws",
+        category_key="SCREWS",
         synonyms=(r"\bscrews?\b", r"\bpech\b", r"\bfasteners?\b"),
     ),
     Addon(
         key="hardware", label="Hinges & fittings", emoji="🚪",
         hint="Hinges, channels, handles, locks",
+        category_key="FITTINGS",
         synonyms=(r"\bhinges?\b", r"\bfittings?\b", r"\bchannels?\b",
                   r"\bhandles?\b", r"\blocks?\b", r"\bhardware\b", r"\bkabza\b"),
     ),
     Addon(
         key="laminate", label="Laminate / sunmica", emoji="🎨",
         hint="Decorative laminate sheets",
+        category_key="LAMINATE",
         synonyms=(r"\blaminate\b", r"\bsunmica\b", r"\bmica\b", r"\bdeco\b"),
     ),
     Addon(
         key="edge_band", label="Edge banding tape", emoji="🎗️",
         hint="PVC edge banding / beading",
+        category_key="EDGEBAND",
         synonyms=(r"\bedge\s*band", r"\bbeading\b", r"\bpvc\s*tape\b", r"\bpatti\b"),
     ),
 )

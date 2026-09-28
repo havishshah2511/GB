@@ -68,6 +68,11 @@ class Addon:
     hint: str = ""
     # Regexes that recognise it in free text ("bhi chahiye fevicol").
     synonyms: tuple[str, ...] = ()
+    # The category that knows how to specify and group it. "Nails" is not
+    # something a supplier can quote -- 2 inch wire nails is. Picking the add-on
+    # therefore opens a short flow of its own, and the answers form a real
+    # buying group that pools with every other buyer wanting the same nails.
+    category_key: str = ""
 
     def chip(self) -> str:
         return f"{self.emoji} {self.label}".strip()
@@ -106,6 +111,8 @@ class Category:
     # alone gives "a better price on air conditioner", so each category words
     # its own. Mass nouns (plywood) stay singular.
     plural_label: str = ""
+    # Reached only as a companion product, never offered in the opening menu.
+    addon_only: bool = False
     # Companion products offered once the main requirement is captured.
     addons: tuple[Addon, ...] = ()
     # The sentence that introduces them, e.g. "Most plywood buyers also need…".

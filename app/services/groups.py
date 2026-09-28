@@ -566,9 +566,13 @@ def addon_demand(group_id: str) -> list[dict[str, Any]]:
     """Companion products the members of this group asked for.
 
     This is the bundle to put in front of a supplier: "500 sheets, and 18 of
-    these 22 buyers also want adhesive". Counts of buyers, not quantities --
-    nobody was asked how much glue they need, and guessing would be inventing
-    demand that does not exist.
+    these 22 buyers also want adhesive".
+
+    `buyers` is a head count taken from the main intents. `quantity` appears
+    only for the buyers who went on to specify the companion product -- it is
+    summed from their own intents, never estimated from the head count. Those
+    intents live in groups of their own (`groups`), which is where the
+    companion product actually gets priced.
     """
     group = get(group_id)
     if group is None:
@@ -582,19 +586,69 @@ def addon_demand(group_id: str) -> list[dict[str, Any]]:
         for key in loads(member.get("specifications_json"), {}).get("addons", []) or []:
             tally[key] = tally.get(key, 0) + 1
 
+    pooled = _addon_requirements(group["code"], category)
+
     rows = []
     for addon in category.addons:
         count = tally.get(addon.key, 0)
-        if count:
-            rows.append({
-                "key": addon.key,
-                "label": addon.label,
-                "emoji": addon.emoji,
-                "hint": addon.hint,
-                "buyers": count,
-            })
+        detail = pooled.get(addon.key)
+        if not count and not detail:
+            continue
+        row: dict[str, Any] = {
+            "key": addon.key,
+            "label": addon.label,
+            "emoji": addon.emoji,
+            "hint": addon.hint,
+            "buyers": count,
+        }
+        if detail:
+            product = catalog.get(addon.category_key)
+            row["specified"] = detail["buyers"]
+            row["quantity"] = round(detail["quantity"], 2)
+            row["quantity_text"] = (
+                product.qty_label(detail["quantity"], detail["unit"]) if product
+                else f"{detail['quantity']:g}"
+            )
+            row["groups"] = sorted(detail["groups"])
+        rows.append(row)
     rows.sort(key=lambda r: -r["buyers"])
     return rows
+
+
+def _addon_requirements(group_code: str, category: catalog.Category) -> dict[str, dict[str, Any]]:
+    """The companion requirements captured alongside one group's orders.
+
+    A companion product is a purchase intent like any other -- it has its own
+    quantity, its own specification and its own group. The link back to the
+    order that prompted it is recorded on the intent as `for_group`.
+    """
+    by_category = {a.category_key: a.key for a in category.addons if a.category_key}
+    if not by_category:
+        return {}
+
+    placeholders = ", ".join("?" for _ in by_category)
+    rows = query(
+        "SELECT i.category, i.quantity, i.unit, i.specifications_json, "
+        "g.code AS group_code FROM purchase_intents i "
+        "LEFT JOIN buying_groups g ON g.id = i.group_id "
+        f"WHERE i.status = 'active' AND i.category IN ({placeholders})",
+        list(by_category),
+    )
+
+    found: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        spec = loads(row["specifications_json"], {})
+        if spec.get("for_group") != group_code:
+            continue
+        key = by_category[row["category"]]
+        entry = found.setdefault(
+            key, {"buyers": 0, "quantity": 0.0, "unit": row["unit"], "groups": set()}
+        )
+        entry["buyers"] += 1
+        entry["quantity"] += float(row["quantity"] or 0)
+        if row["group_code"]:
+            entry["groups"].add(row["group_code"])
+    return found
 
 
 def summary_for_admin(group: dict[str, Any]) -> dict[str, Any]:

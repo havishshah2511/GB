@@ -345,15 +345,22 @@
 
       ${(g.addon_demand || []).length ? `
         <h2>Also wanted with this order</h2>
-        <p class="hint">Buyers in this group who asked for a companion product.
-          Worth quoting as one bundle.</p>
+        <p class="hint">Companion products these buyers asked for. Each one pools in a
+          group of its own — quote them with the board as a single bundle.</p>
         <div class="panel">${table(
-          ["Product", { label: "Buyers", num: 1 }, "Share of group"],
+          ["Product", { label: "Buyers", num: 1 }, "Share of group", "Specified", "Its group"],
           g.addon_demand.map((a) => `<tr>
             <td>${esc(a.emoji)} <strong>${esc(a.label)}</strong>
                 <div class="hint">${esc(a.hint)}</div></td>
             <td class="num">${num(a.buyers)}</td>
             <td style="min-width:120px">${progressBar(a.buyers, 0, g.customers || a.buyers, true)}</td>
+            <td>${a.quantity_text
+                   ? `<strong>${esc(a.quantity_text)}</strong>
+                      <div class="hint">from ${num(a.specified)} of ${num(a.buyers)}</div>`
+                   : `<span class="hint">not specified yet</span>`}</td>
+            <td>${(a.groups || []).map((code) =>
+                   `<a href="#" data-group="${esc(code)}" class="tag">${esc(code)}</a>`
+                 ).join(" ") || "<span class=\"hint\">—</span>"}</td>
           </tr>`))}</div>` : ""}
 
       <h2>Pricing slabs</h2>

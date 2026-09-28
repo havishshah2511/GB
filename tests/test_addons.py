@@ -106,7 +106,8 @@ def test_choices_are_saved_on_the_intent(chat):
     chat("a4", "addon:nails")
     reply = chat("a4", DONE)
 
-    assert reply["done"] is True
+    # The main order is banked as soon as the picks are in; each pick then gets
+    # its own questions (tests/test_addon_specs.py).
     assert spec_of(reply["summary"]["intent_id"])["addons"] == ["adhesive", "nails"]
 
     listed = cards(reply, "addons")
@@ -181,7 +182,7 @@ def test_the_back_office_sees_pooled_addon_demand(chat):
             chat(session, f"addon:{key}")
         chat(session, DONE)
 
-    group = groups.list_groups()[0]
+    group = groups.list_groups(category="PLY")[0]
     demand = {row["label"]: row["buyers"] for row in groups.addon_demand(group["id"])}
     assert demand["Adhesive"] == 3, demand
     assert demand["Nails & pins"] == 1
@@ -192,11 +193,12 @@ def test_the_back_office_sees_pooled_addon_demand(chat):
 def test_addon_demand_is_buyer_counts_not_invented_quantities(chat):
     drive_to_addons(chat, "b9", "Havish", "9812350009")
     chat("b9", "addon:adhesive")
-    chat("b9", DONE)
+    chat("b9", DONE)          # the adhesive questions are asked, not answered
 
-    row = groups.addon_demand(groups.list_groups()[0]["id"])[0]
+    row = groups.addon_demand(groups.list_groups(category="PLY")[0]["id"])[0]
     assert row["buyers"] == 1
-    # Nobody was asked how much glue they need, so no quantity is claimed.
+    # This buyer has not said how much glue they need, so no quantity is
+    # claimed. It appears only once they answer -- see test_addon_specs.py.
     assert "quantity" not in row and "qty" not in row
 
 

@@ -141,7 +141,9 @@ def test_quantity_is_asked_after_the_specification_and_before_the_city(chat):
         if not question or reply.get("done"):
             break
         order.append(question["slot"])
-        reply = chat("ply1", {**PLY, "name": "A", "mobile": "9812300201"}.get(question["slot"])
+        answers = {**PLY, "name": "A", "mobile": "9812300201",
+                   "_addons": "__addons_done__"}
+        reply = chat("ply1", answers.get(question["slot"])
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
     assert order[:4] == ["mobile", "grade", "thickness", "sheet_size"], order

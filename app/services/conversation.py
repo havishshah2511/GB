@@ -462,6 +462,155 @@ def read_addon_answer(state: dict[str, Any], text: str) -> str | None:
     return "added"
 
 
+# --------------------------------------------------------------------------- #
+# companion products: their own specification, their own group
+# --------------------------------------------------------------------------- #
+#: Marks a question that belongs to a companion product rather than the main
+#: order, so its answer is applied to that product's own slot bag.
+ADDON_SLOT_PREFIX = "_ax:"
+
+
+def _addon_product(main: catalog.Category | None, key: str) -> catalog.Category | None:
+    """The category that knows how to specify and price one companion product."""
+    addon = main.addon(key) if main else None
+    if addon is None or not addon.category_key:
+        return None
+    return catalog.get(addon.category_key)
+
+
+def _queue_addons(state: dict[str, Any]) -> None:
+    """Line up the picked companion products that have questions of their own.
+
+    "Nails" is not something a supplier can quote; 2 inch wire nails is. So a
+    pick is only the start -- each one gets a couple of questions and becomes a
+    requirement that pools with every other buyer wanting the same thing.
+    """
+    main = catalog.get(state.get("category"))
+    state["_ax_queue"] = [
+        key for key in _chosen_addons(state) if _addon_product(main, key) is not None
+    ]
+
+
+def _addon_substate(state: dict[str, Any], product: catalog.Category) -> dict[str, Any]:
+    """Start the companion flow from what the buyer has already told us.
+
+    Same person, same city, same deadline -- asking any of it a second time
+    would be insulting. Only what makes this product quotable is asked.
+    """
+    carried = (
+        "city", "area", "pincode", "name", "mobile", "can_wait", "wait_days",
+        "desired_purchase_date", "maximum_purchase_date", "earliest_purchase_date",
+        "purchase_within_days",
+    )
+    sub = {k: state[k] for k in carried if state.get(k) not in (None, "", [])}
+    sub["category"] = product.key
+    # The thread back to the order that prompted it, so the back office can put
+    # the board and the glue in front of one supplier as a single bundle.
+    if state.get("_group_code"):
+        sub["for_group"] = state["_group_code"]
+    return sub
+
+
+def _as_addon_question(question: Question) -> Question:
+    return Question(
+        slot=ADDON_SLOT_PREFIX + question.slot,
+        text=question.text,
+        chips=question.chips,
+        input_type=question.input_type,
+        placeholder=question.placeholder,
+        optional=question.optional,
+    )
+
+
+def _addon_step(conversation: dict[str, Any], state: dict[str, Any],
+                base_url: str) -> tuple[list[dict[str, Any]], Question | None]:
+    """Advance the companion-product queue by one question.
+
+    Returns the messages to show and the next question, or None once every
+    picked product has been captured and banked.
+    """
+    messages: list[dict[str, Any]] = []
+    # Every pass either returns a question or takes one product off the queue,
+    # so the bound is the queue's length; +1 to reach the empty check.
+    for _ in range(len(state.get("_ax_queue") or []) + 1):
+        sub = state.get("_ax_state")
+        if not sub:
+            queue = list(state.get("_ax_queue") or [])
+            if not queue:
+                return messages, None
+            key = queue.pop(0)
+            state["_ax_queue"] = queue
+            product = _addon_product(catalog.get(state.get("category")), key)
+            if product is None:
+                continue
+            sub = _addon_substate(state, product)
+            state["_ax_state"] = sub
+            messages.append({"role": "bot", "text": _addon_opener(product)})
+
+        question = next_question(sub)
+        if question is not None:
+            _mark_optional_asked(sub, question)
+            return messages, _as_addon_question(question)
+
+        messages += _bank_addon(conversation, state, sub, base_url)
+        state["_ax_state"] = None
+    return messages, None
+
+
+def _addon_opener(product: catalog.Category) -> str:
+    intro = product.intro or f"Now the {product.in_sentence()}"
+    return (
+        f"{intro}\n\nJust the few things a supplier will ask, so we can pool you "
+        f"with other buyers who need exactly the same thing."
+    )
+
+
+def _bank_addon(conversation: dict[str, Any], state: dict[str, Any],
+                sub: dict[str, Any], base_url: str) -> list[dict[str, Any]]:
+    """Create the companion product's own intent and show its group."""
+    clean = {k: v for k, v in sub.items() if not k.startswith("_")}
+    if not clean.get("desired_purchase_date"):
+        clean["desired_purchase_date"] = str(today() + timedelta(days=7))
+    result = intents.create(
+        clean,
+        conversation_id=conversation["id"],
+        referral_code=conversation.get("referral_code"),
+    )
+    intent = result["intent"]
+    group = result["group"]
+    qty = float(intent["quantity"] or 0)
+    facts = pricing.price_facts(group, qty)
+
+    state["_ax_intents"] = list(state.get("_ax_intents") or []) + [intent["id"]]
+
+    if result["group_created"]:
+        text = (
+            f"Saved 👍 **{facts['your_quantity_text']}** of {intent['product']} — you're the "
+            f"first buyer in this one, so we'll pool other buyers' orders into it."
+        )
+    else:
+        text = (
+            f"Even better — your **{facts['your_quantity_text']}** joins buyers already asking "
+            f"for the same thing. That group is now at **{facts['group_quantity_text']}**."
+        )
+
+    messages: list[dict[str, Any]] = [
+        {"role": "bot", "text": text},
+        {"role": "bot", "card": _group_card(group, qty)},
+    ]
+    if not facts.get("has_pricing"):
+        messages.append({"role": "bot", "text": facts["pricing_note"]})
+    return messages
+
+
+def _addon_prompt(question: Question, sub: dict[str, Any]) -> str:
+    """The retry wording, looked up by the product's own slot name."""
+    bare = question.slot[len(ADDON_SLOT_PREFIX):]
+    if not int(dict(sub.get("_misses", {})).get(bare, 0)):
+        return question.text
+    return CLARIFIERS.get(bare) or f"Let me put that another way 🙂 {question.text}"
+
+
 def contact_question(state: dict[str, Any]) -> Question | None:
     """The mobile number is collected up front; only the name is left here."""
     if not state.get("name"):
@@ -511,6 +660,11 @@ def _cancel(state: dict[str, Any], base_url: str) -> dict[str, Any]:
     if session_intent and any(r["id"] == session_intent for r in active):
         record = next(r for r in active if r["id"] == session_intent)
         intents.set_status(session_intent, "cancelled")
+        # The companion requirements were part of the same order -- cancelling
+        # the board and leaving the glue behind would be a trap.
+        for companion in state.get("_ax_intents") or []:
+            if any(r["id"] == companion for r in active):
+                intents.set_status(companion, "cancelled")
         return {
             "messages": [
                 {
@@ -1130,12 +1284,10 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
                 return _respond(session_id, STAGE_CONTACT, messages, question, state, base_url)
 
             state["_addons_done"] = True
-            result = finalise(conversation, state, base_url)
-            messages += result["messages"]
-            history += messages
-            state = result["state"]
-            _save(conversation, state, history, STAGE_DONE)
-            return _respond(session_id, STAGE_DONE, messages, None, state, base_url)
+            more, question, state = complete(conversation, state, base_url)
+            messages += more
+            return _finish_turn(session_id, conversation, state, history, messages,
+                                question, base_url)
 
     command = detect_command(text, expecting)
     if command:
@@ -1157,6 +1309,30 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
                     _chip("📋 My requests", "show my requests"),
                 ]
             return payload
+
+    # --- specifying a companion product ------------------------------------- #
+    # The main order is already banked; these answers build a requirement of
+    # its own, in its own slot bag, which becomes its own group.
+    if expecting and expecting.startswith(ADDON_SLOT_PREFIX):
+        slot_name = expecting[len(ADDON_SLOT_PREFIX):]
+        sub = state.get("_ax_state") or {}
+        public = {k: v for k, v in sub.items() if not k.startswith("_")}
+        slots = nlu.extract(text, public, slot_name)
+        slots.pop("message_intent", None)
+        if text.strip().lower() in ("skip", "no preference", "not sure", "none"):
+            _mark_skip(sub, slot_name)
+        changed = apply_slots(sub, slots, slot_name)
+        _track_misses(sub, slot_name, changed)
+        state["_ax_state"] = sub
+
+        note = acknowledgement(sub, changed)
+        if note:
+            messages.append({"role": "bot", "text": note})
+
+        more, question = _addon_step(conversation, state, base_url)
+        messages += more
+        return _finish_turn(session_id, conversation, state, history, messages,
+                            question, base_url)
 
     # --- invitee confirming the group they were invited to ------------------ #
     if expecting == "_landing_confirm":
@@ -1346,12 +1522,10 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
 
     if question is None:
         # Everything collected -> create the intent and show the group.
-        result = finalise(conversation, state, base_url)
-        messages += result["messages"]
-        history += messages
-        state = result["state"]
-        _save(conversation, state, history, STAGE_DONE)
-        return _respond(session_id, STAGE_DONE, messages, None, state, base_url)
+        more, question, state = complete(conversation, state, base_url)
+        messages += more
+        return _finish_turn(session_id, conversation, state, history, messages,
+                            question, base_url)
 
     _mark_optional_asked(state, question)
     state["_expecting"] = question.slot
@@ -1364,10 +1538,40 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
     return _respond(session_id, stage, messages, question, state, base_url)
 
 
+def _finish_turn(session_id: str, conversation: dict[str, Any], state: dict[str, Any],
+                 history: list[dict[str, Any]], messages: list[dict[str, Any]],
+                 question: Question | None, base_url: str) -> dict[str, Any]:
+    """Close a turn that either asked a companion question or ended the chat."""
+    if question is None:
+        # The sign-off is held back while companion products are still being
+        # specified, so it lands here, once, at the real end.
+        if not state.get("_signed_off"):
+            messages += _closing_messages(state, base_url)
+        state["_expecting"] = None
+        history += messages
+        _save(conversation, state, history, STAGE_DONE)
+        return _respond(session_id, STAGE_DONE, messages, None, state, base_url)
+
+    state["_expecting"] = question.slot
+    prompt = _addon_prompt(question, state.get("_ax_state") or {})
+    if prompt:
+        messages.append({"role": "bot", "text": prompt})
+    history += messages
+    _save(conversation, state, history, STAGE_CONTACT)
+    return _respond(session_id, STAGE_CONTACT, messages, question, state, base_url)
+
+
 def _current_question(state: dict[str, Any], stage: str) -> Question | None:
     if stage == STAGE_DONE:
         return None
-    return next_question(state) or contact_question(state)
+    # Mid-way through a companion product: resume its question, not the main
+    # order's, which is already complete.
+    sub = state.get("_ax_state")
+    if sub:
+        question = next_question(sub)
+        if question is not None:
+            return _as_addon_question(question)
+    return next_question(state) or contact_question(state) or addon_question(state)
 
 
 def _respond(session_id: str, stage: str, messages: list[dict[str, Any]],
@@ -1406,8 +1610,13 @@ def _done_chips(state: dict[str, Any]) -> list[dict[str, str]]:
 # completion
 # --------------------------------------------------------------------------- #
 def finalise(conversation: dict[str, Any], state: dict[str, Any],
-             base_url: str = "") -> dict[str, Any]:
-    """Create the purchase intent, join a group, and render sections 12-17."""
+             base_url: str = "", closing: bool = True) -> dict[str, Any]:
+    """Create the purchase intent, join a group, and render sections 12-17.
+
+    `closing` holds back the sign-off when companion products still have
+    questions of their own -- "you're done" belongs at the end of the
+    conversation, not in the middle of it.
+    """
     clean = {k: v for k, v in state.items() if not k.startswith("_")}
     if not clean.get("desired_purchase_date"):
         clean["desired_purchase_date"] = str(today() + timedelta(days=7))
@@ -1495,6 +1704,7 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
     # Confirm the basket, without pricing it -- nobody has quoted for these.
     picked = category.addon_labels(_chosen_addons(state))
     if picked:
+        pending = bool(state.get("_ax_queue"))
         messages.append(
             {
                 "role": "bot",
@@ -1503,6 +1713,10 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
                     "title": "Also in your request",
                     "items": picked,
                     "note": (
+                        "Each of these gets its own buying group too, so we can ask a "
+                        "supplier to quote them for the whole pool. A few quick "
+                        "questions on each and you're done."
+                        if pending else
                         "We'll ask the supplier to quote these alongside the "
                         f"{category.in_sentence()}, so the group rate applies to "
                         "them too. Prices come once the quote is in."
@@ -1511,14 +1725,43 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
             }
         )
 
-    messages.append({"role": "bot", "card": _done_card(state)})
-
-    # The buyer has no account, so the status link is how they come back.
-    records = intents.list_by_customer(customer["id"], active_only=True)
-    messages.append({"role": "bot", "card": _status_card(customer["id"], base_url, records)})
-    _send_status_link(customer["id"], base_url)
+    if closing:
+        messages += _closing_messages(state, base_url)
 
     return {"messages": messages, "state": state, "intent": intent, "group": group}
+
+
+def _closing_messages(state: dict[str, Any], base_url: str) -> list[dict[str, Any]]:
+    """The sign-off: what happens next, and the link back in.
+
+    The buyer has no account, so the status link is how they return.
+    """
+    state["_signed_off"] = True
+    messages: list[dict[str, Any]] = [{"role": "bot", "card": _done_card(state)}]
+    customer_id = state.get("_customer_id")
+    if customer_id:
+        records = intents.list_by_customer(customer_id, active_only=True)
+        messages.append({"role": "bot", "card": _status_card(customer_id, base_url, records)})
+        _send_status_link(customer_id, base_url)
+    return messages
+
+
+def complete(conversation: dict[str, Any], state: dict[str, Any],
+             base_url: str) -> tuple[list[dict[str, Any]], Question | None, dict[str, Any]]:
+    """Bank the requirement, then ask each companion product's own questions.
+
+    The main order is saved first and on its own: whatever happens next, the
+    thing they came for is recorded. Only then do we ask what kind of nails.
+    """
+    _queue_addons(state)
+    pending = bool(state.get("_ax_queue"))
+    result = finalise(conversation, state, base_url, closing=not pending)
+    messages = list(result["messages"])
+    state = result["state"]
+
+    more, question = _addon_step(conversation, state, base_url)
+    messages += more
+    return messages, question, state
 
 
 def _done_card(state: dict[str, Any]) -> dict[str, Any]:

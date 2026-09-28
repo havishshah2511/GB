@@ -71,6 +71,11 @@ def answer_all(chat, session_id, opening_message, answers, limit=15):
         slot = question["slot"]
         value = answers.get(slot)
         if value is None:
-            value = question["chips"][0]["value"] if question["chips"] else "skip"
+            # Companion products are opt-in: decline unless the test asked for
+            # them, so an unrelated test isn't dragged through their sub-flows.
+            if slot == "_addons":
+                value = "__addons_done__"
+            else:
+                value = question["chips"][0]["value"] if question["chips"] else "skip"
         reply = chat(session_id, value)
     return reply

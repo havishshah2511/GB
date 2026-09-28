@@ -386,11 +386,41 @@ too, including trade words ("fevicol", "sunmica", "kabza").
 No price is ever attached: nobody has quoted for them, so the chat says they
 will be quoted alongside the main order and leaves it there.
 
-What it is for is the back office. A group's detail view shows **Also wanted
-with this order** -- how many of its buyers asked for each companion product.
-That is the bundle to put in front of a supplier: "500 sheets, and 18 of these
-22 buyers also want adhesive". Buyer counts, not quantities -- nobody was asked
-how much glue they need, and guessing would invent demand.
+#### Each one is a product in its own right
+
+"Nails" is not something a supplier can quote. **2 inch wire nails** is. So each
+add-on points at a category of its own (`Addon.category_key`, defined in
+`app/catalog/supplies.py`), and picking it opens a short flow: the two fields
+that decide its price, plus a quantity.
+
+| Companion | Grouped by | Counted in |
+| --- | --- | --- |
+| Adhesive | type (white glue / synthetic resin / rubber-based / epoxy) + pack size | kg |
+| Nails & pins | size (1"–4") + type (wire / panel pin / brad / concrete / U-nail) | kg |
+| Screws | size (gauge × length) + type | boxes |
+| Hinges & fittings | material/finish + item | pieces |
+| Laminate | thickness + finish | sheets |
+| Edge banding | width + material | rolls |
+
+The answers become a **purchase intent with its own buying group**, pooling with
+every other buyer who needs the same thing in the same city — `NAILS-AHM-001`
+alongside `PLY-AHM-001`. What the buyer has already told us (city, area,
+deadline, name, number) is carried straight over and never re-asked.
+
+Those categories are `addon_only`: they are excluded from the opening menu
+whatever `ENABLED_CATEGORIES` says, and they ship with **no price slabs** — the
+group collects quantity and says plainly that it is waiting for a quote.
+
+The main order is banked *before* the companion questions start, and the
+"you're done" sign-off is held back until the last one is captured. Cancelling
+the order cancels the companions with it.
+
+What it is all for is the back office. A group's detail view shows **Also wanted
+with this order**: how many of its buyers asked for each companion product, the
+pooled quantity from those who specified it, and a link to the group it landed
+in. That is the bundle to put in front of a supplier — "500 sheets, and 18 of
+these 22 buyers also want adhesive; 340 kg of it". `buyers` is a head count;
+`quantity` is only ever summed from real answers, never estimated from the count.
 
 ### Where "how many?" is asked
 
@@ -452,6 +482,7 @@ its own questions and standing slab table — graduates to its own module.
 | 📺 **Television** | screen size, LED/QLED/OLED, resolution, smart, brand, use, wall mount | size + panel + resolution |
 | ☀️ **Solar panels** | module technology, panels-only vs installed, mounting, wattage, brand, site, DCR | technology + scope + mounting |
 | 🛒 **Something else** | product name in the customer's own words | catalogue product name |
+| 🧴📌🔩🚪🎨🎗️ **Companion products** | reached only alongside a main order — see [Companion products](#companion-products) | two fields each |
 
 Both dedicated flows ask their spec questions in the same order — spec, then
 brand, then star rating, then location and dates — and decline the variants
@@ -481,6 +512,19 @@ CATEGORY = Category(
     default_slab_key="LAPTOP|15.6\"|16gb",
     triggers=(r"\blaptop\b", r"\bnotebook\b"),
 )
+```
+
+A module may expose a `CATEGORIES` tuple instead of a single `CATEGORY` when a
+family belongs together — `supplies.py` declares all six companion products that
+way.
+
+To offer one as a companion product rather than a menu choice, set
+`addon_only=True` on it and point an `Addon` at it from the main category:
+
+```python
+Addon(key="nails", label="Nails & pins", emoji="📌",
+      category_key="NAILS",
+      synonyms=(r"\bnails?\b", r"\bkeel\b", r"\bbrad\b"))
 ```
 
 ---
@@ -649,6 +693,8 @@ tests/test_commands.py       cancel / show-past / change-product / exit, mid-flo
 tests/test_window_matching.py  deadline semantics, pooling, no dead-end loops
 tests/test_consolidation.py  auto-merge sweep, what must never be pooled
 tests/test_open_products.py  any-product pooling, unpriced-group honesty
+tests/test_addons.py         offering companion products, declining, the bundle
+tests/test_addon_specs.py    their own questions, their own groups, pooled demand
 tests/test_reset.py          data reset guards and behaviour
 tests/test_tv.py             TV routing, specs, panel-technology pricing
 tests/test_solar.py          solar routing, kW capacity, scope-based pricing
