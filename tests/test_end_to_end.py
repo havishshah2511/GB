@@ -127,8 +127,13 @@ def test_invitee_inherits_the_group_from_the_shared_link(chat):
     group_code = seed["summary"]["group_code"]
     code = cards(seed, "share")[0]["referral_code"]
 
+    # The language comes first even here -- the invite itself has to be read.
     landing = chat("inv-friend", "", referral_code=code, group_code=group_code)
-    assert landing["question"]["slot"] == "_landing_confirm"
+    assert landing["question"]["slot"] == "_lang"
+
+    landing = chat("inv-friend", "en")
+    assert landing["question"]["slot"] == "_landing_confirm", \
+        "the invite's product and city must survive the language step"
 
     reply = chat("inv-friend", "yes")
     assert reply["summary"]["city"] == "Ahmedabad"

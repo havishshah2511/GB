@@ -9,7 +9,7 @@ from app import catalog
 from app.nlu import rules
 from app.services import groups, intents, pricing
 
-from conftest import answer_all
+from conftest import answer_all, start
 
 PLY = {
     "grade": "BWR", "thickness": "18 mm", "sheet_size": "8 x 4 ft",
@@ -55,7 +55,7 @@ def test_a_single_category_is_chosen_for_the_customer(chat, monkeypatch):
 
     monkeypatch.setattr(cat, "CATEGORIES", {"PLY": cat.ALL_CATEGORIES["PLY"]})
 
-    reply = chat("solo1", "")
+    reply = start(chat, "solo1")
     assert reply["question"]["slot"] != "category", "asked which product when there is only one"
     assert reply["question"]["slot"] == "mobile"
     assert reply["chips"] == [], "no product chips to pick from"
@@ -67,7 +67,7 @@ def test_a_single_category_is_chosen_for_the_customer(chat, monkeypatch):
 
 def test_the_menu_returns_when_more_than_one_category_is_offered(chat):
     """The suite enables everything, so the choice is still shown."""
-    reply = chat("solo2", "")
+    reply = start(chat, "solo2")
     assert reply["question"]["slot"] == "category"
     assert len(reply["chips"]) > 1
 

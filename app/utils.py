@@ -75,7 +75,9 @@ _NAME_STOPWORDS = {
 def clean_name(raw: str | None) -> str | None:
     if not raw:
         return None
-    text = re.sub(r"[^A-Za-z\s\.\-']", " ", str(raw)).strip()
+    # Devanagari is allowed through: a Hindi-speaking buyer types their name in
+    # it, and stripping it would leave nothing and re-ask the question forever.
+    text = re.sub(r"[^A-Za-zऀ-ॿ\s\.\-']", " ", str(raw)).strip()
     text = re.sub(r"\s+", " ", text)
     words = [w for w in text.split() if w.lower() not in _NAME_STOPWORDS]
     # One-letter names are real names; rejecting them used to trap the customer

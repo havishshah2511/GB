@@ -1,7 +1,7 @@
 """Conversation engine (spec sections 2-8, 26)."""
 from __future__ import annotations
 
-from conftest import answer_all
+from conftest import answer_all, start
 
 from app.services import conversation, intents
 
@@ -15,8 +15,15 @@ def cards(reply, kind=None):
     return [c for c in found if kind is None or c["type"] == kind]
 
 
+def test_the_language_is_settled_before_the_greeting(chat):
+    """The greeting itself has to be in the chosen language."""
+    reply = chat("s0", "")
+    assert reply["question"]["slot"] == "_lang"
+    assert [c["value"] for c in reply["chips"]] == ["en", "hi"]
+
+
 def test_opening_offers_every_category(chat):
-    reply = chat("s1", "")
+    reply = start(chat, "s1")
     assert "combining your requirement" in texts(reply)
     labels = [c["label"] for c in reply["chips"]]
     assert any("Air Conditioner" in l for l in labels)

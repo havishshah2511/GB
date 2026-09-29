@@ -47,23 +47,68 @@ CITIES: dict[str, tuple[str, ...]] = {
     "Ludhiana": ("ludhiana",),
     "Patna": ("patna",),
 }
+
+#: The same cities written in Devanagari. A buyer who chose Hindi types
+#: "अहमदाबाद", and without this the city is stored in Hindi, the group code
+#: comes out as PLY-XXX-001 and they form a *second* Ahmedabad group that can
+#: never pool with the English one. The whole product would quietly split in
+#: two along a language line, which is the opposite of what it is for.
+CITIES_DEVANAGARI: dict[str, tuple[str, ...]] = {
+    "Ahmedabad": ("अहमदाबाद", "अमदावाद"),
+    "Surat": ("सूरत",),
+    "Vadodara": ("वडोदरा", "बड़ोदरा"),
+    "Rajkot": ("राजकोट",),
+    "Gandhinagar": ("गांधीनगर", "गाँधीनगर"),
+    "Mumbai": ("मुंबई", "मुम्बई", "बंबई"),
+    "Pune": ("पुणे", "पूना"),
+    "Nashik": ("नासिक", "नाशिक"),
+    "Nagpur": ("नागपुर",),
+    "Delhi": ("दिल्ली", "नई दिल्ली"),
+    "Gurugram": ("गुरुग्राम", "गुड़गांव", "गुड़गाँव"),
+    "Noida": ("नोएडा",),
+    "Jaipur": ("जयपुर",),
+    "Lucknow": ("लखनऊ",),
+    "Indore": ("इंदौर",),
+    "Bhopal": ("भोपाल",),
+    "Bengaluru": ("बेंगलुरु", "बैंगलोर"),
+    "Hyderabad": ("हैदराबाद", "सिकंदराबाद"),
+    "Chennai": ("चेन्नई", "मद्रास"),
+    "Coimbatore": ("कोयंबटूर",),
+    "Kochi": ("कोच्चि", "कोचीन"),
+    "Kolkata": ("कोलकाता", "कलकत्ता"),
+    "Chandigarh": ("चंडीगढ़",),
+    "Ludhiana": ("लुधियाना",),
+    "Patna": ("पटना",),
+}
+
+# Devanagari has no \b that the regex engine recognises, so its aliases are
+# matched bare. English aliases keep their word boundaries.
 _CITY_PATTERNS = [
     (re.compile(rf"\b{re.escape(alias)}\b", re.I), name)
     for name, aliases in CITIES.items()
+    for alias in aliases
+] + [
+    (re.compile(re.escape(alias)), name)
+    for name, aliases in CITIES_DEVANAGARI.items()
     for alias in aliases
 ]
 
 MONTHS = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
 MONTHS.update({m.lower(): i for i, m in enumerate(calendar.month_name) if m})
 
+#: Devanagari has no word boundary that \b recognises, so its alternatives are
+#: matched without one. A buyer who picked Hindi will often type in it.
 AFFIRMATIVE = re.compile(
     r"\b(yes|yeah|yep|yup|sure|ok(ay)?|fine|correct|right|of course|definitely|"
-    r"absolutely|haan|han|haa|ha|hn|ji|bilkul|theek|thik|sahi|accha|acha|chalega)\b",
+    r"absolutely|haan|han|haa|ha|hn|ji|bilkul|theek|thik|sahi|accha|acha|chalega)\b"
+    r"|(हाँ|हा|हां|जी|बिल्कुल|ठीक|सही|अच्छा|चलेगा)",
     re.I,
 )
 # "nahi chahiye" must read as no, so the negative is checked first everywhere.
 NEGATIVE = re.compile(
-    r"\b(no|nope|nah|not really|never|don'?t|nahi|nahin|nai|nhi|mat)\b", re.I
+    r"\b(no|nope|nah|not really|never|don'?t|nahi|nahin|nai|nhi|mat)\b"
+    r"|(नहीं|नही|ना\b|मत)",
+    re.I,
 )
 MAYBE = re.compile(r"\b(maybe|may be|perhaps|possibly|not sure|depends)\b", re.I)
 
@@ -412,7 +457,7 @@ def extract_name(text: str, expecting_name: bool = False) -> str | None:
     if match:
         return clean_name(match.group(1))
     if expecting_name:
-        stripped = re.sub(r"[^A-Za-z\s\.'\-]", " ", text).strip()
+        stripped = re.sub(rf"[^A-Za-z{DEVANAGARI}\s\.'\-]", " ", text).strip()
         if stripped and len(stripped.split()) <= 4:
             return clean_name(stripped)
     return None
@@ -421,7 +466,8 @@ def extract_name(text: str, expecting_name: bool = False) -> str | None:
 #: Answers that mean "I'm not telling you" rather than a real value.
 FILLER = re.compile(
     r"^(skip|no|none|na|n/?a|nope|nothing|not sure|dunno|dont know|don't know|"
-    r"no idea|whatever|any|anything|idk|pass|later|maybe)$",
+    r"no idea|whatever|any|anything|idk|pass|later|maybe|"
+    r"छोड़ें|छोड़ो|पता नहीं|कुछ नहीं|कोई फ़र्क़ नहीं|कोई फर्क नहीं|कुछ भी|नहीं|शायद)$",
     re.I,
 )
 
@@ -516,6 +562,20 @@ def detect_message_intent(text: str) -> str | None:
 # --------------------------------------------------------------------------- #
 # main entry point
 # --------------------------------------------------------------------------- #
+#: The Devanagari block, for the free-text slots. A buyer who chose Hindi will
+#: type their city and name in it, and a character class that only allows A-Z
+#: strips the answer to nothing and asks again forever.
+DEVANAGARI = "\\u0900-\\u097F"
+
+#: Devanagari digits. "१०" is ten, and every number rule downstream is written
+#: against ASCII, so they are folded once here rather than in twenty regexes.
+_DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+
+def ascii_digits(text: str) -> str:
+    return (text or "").translate(_DEVANAGARI_DIGITS)
+
+
 def extract(text: str, state: dict[str, Any], expecting: str | None = None) -> dict[str, Any]:
     """Pull every grounded value out of `text`.
 
@@ -526,7 +586,7 @@ def extract(text: str, state: dict[str, Any], expecting: str | None = None) -> d
     if not text or not text.strip():
         return found
 
-    text = text.strip()
+    text = ascii_digits(text).strip()
     category = catalog.get(state.get("category"))
 
     intent = detect_message_intent(text)
@@ -640,7 +700,7 @@ def _extract_for_slot(
             return {"city": city}
         # Accept an unknown city name, but never a filler word -- "skip" must
         # not become a city and spawn a group of its own.
-        cleaned = re.sub(r"[^A-Za-z\s]", " ", text).strip()
+        cleaned = re.sub(rf"[^A-Za-z{DEVANAGARI}\s]", " ", text).strip()
         cleaned = re.sub(r"\s+", " ", cleaned)
         if _is_filler(cleaned):
             return None
@@ -652,7 +712,7 @@ def _extract_for_slot(
         area = extract_area(text, state.get("city"))
         if area:
             return {"area": area}
-        cleaned = re.sub(r"[^A-Za-z0-9\s\-]", " ", text).strip()
+        cleaned = re.sub(rf"[^A-Za-z0-9{DEVANAGARI}\s\-]", " ", text).strip()
         if _is_filler(cleaned):
             return None
         if 1 < len(cleaned) <= 40:
@@ -702,7 +762,7 @@ def _extract_for_slot(
     if value is not None:
         return {slot_name: value}
     if slot.freeform and not _belongs_elsewhere(text):
-        cleaned = re.sub(r"[^A-Za-z0-9\s\-&'/x]", " ", text).strip()
+        cleaned = re.sub(rf"[^A-Za-z0-9{DEVANAGARI}\s\-&'/x]", " ", text).strip()
         cleaned = re.sub(r"\s+", " ", cleaned)
         if 1 < len(cleaned) <= slot.max_chars and len(cleaned.split()) <= slot.max_words:
             return {slot_name: cleaned.title()}

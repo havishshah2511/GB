@@ -361,6 +361,80 @@ and longer phrases are matched before their prefixes so "do sau" is not read as
 
 ---
 
+## English or हिंदी
+
+The first thing the chat asks, before it greets anyone — the greeting itself
+has to be in the chosen language. The prompt is written in both, since it has
+to be readable by someone who cannot read the other option.
+
+### The rule the whole feature rests on
+
+**Only what is displayed is translated.** Every chip carries a `label` and a
+`value`: the label is what the buyer reads, the value is what the server
+receives, what the extractor matches, and what ends up in the group's
+specification.
+
+```
+label  "पता नहीं"        ← the buyer
+value  "Not Sure"        → the matching engine
+```
+
+That split is what keeps a Hindi-speaking buyer and an English-speaking buyer
+asking for the same 18 mm BWR plywood in the **same** buying group. Translate a
+value and the pool silently splits along a language line — the app would look
+like it was working while quietly doing the opposite of its job. There is a
+test for exactly this (`test_a_hindi_buyer_and_an_english_buyer_land_in_one_group`),
+and it is the one that matters in `tests/test_language.py`.
+
+City names get the same treatment in reverse: "अहमदाबाद" is *canonicalised on
+the way in* to `Ahmedabad`, so the group code is `PLY-AHM-001` either way, and
+translated back on the way out for display. Without that the group code came
+out as `PLY-XXX-001` and Ahmedabad had two groups.
+
+### How it is put together
+
+`app/i18n.py` holds one dictionary keyed by the English source string, so the
+category modules stay monolingual and a missing entry falls through to English
+rather than blanking out. Translation happens in two places:
+
+| | |
+| --- | --- |
+| At the boundary | `i18n.localise()` in `_respond()` walks the whole reply — questions, chip labels, card titles, placeholders |
+| At the source | `i18n.phrase()` for sentences with values in them, which can never be dictionary keys: the template is translated, *then* the values go in |
+
+Measurements are generated, so they are never dictionary keys either: a unit
+pass turns "18 mm" into "18 मिमी" and "120 sheets" into "120 शीट" while leaving
+the number alone.
+
+Brand names (Century, Fevicol, Merino) and trade codes (MR, BWR, ISI, PVC) are
+deliberately left in English — that is how they are said in Hindi too, and
+"translating" them would only make them harder to recognise.
+
+### Typing in Devanagari
+
+Tapping a chip is the normal path, but the free-text answers are typed. The
+extractors accept the Devanagari block for city, area and name — a character
+class of `A-Za-z` strips such an answer to nothing and re-asks forever — and
+Devanagari digits are folded to ASCII once, at the top of `extract()`, rather
+than in twenty separate number rules.
+
+| | |
+| --- | --- |
+| Digits | १२० → 120 |
+| Yes / no | हाँ, हां, जी, बिल्कुल / नहीं, नही, ना |
+| Cities | अहमदाबाद, मुंबई, दिल्ली, बेंगलुरु … → stored in English |
+
+Someone who ignores the language question and just starts typing is not
+ignored: the message is read in that same turn and the chat carries on in
+English. Throwing away the first thing a person says is a worse failure than
+not knowing their language.
+
+The stored transcript is the conversation the buyer actually had, in the
+language they read it in — their own messages are never rewritten. Adding a
+language means one more entry in `LANGUAGES` and one more table.
+
+---
+
 ## Which categories are offered
 
 `ENABLED_CATEGORIES` decides what the chatbot shows. It currently ships as
@@ -701,6 +775,7 @@ tests/test_consolidation.py  auto-merge sweep, what must never be pooled
 tests/test_open_products.py  any-product pooling, unpriced-group honesty
 tests/test_addons.py         offering companion products, declining, the bundle
 tests/test_addon_specs.py    their own questions, their own groups, pooled demand
+tests/test_language.py       English/Hindi, and that language cannot split a group
 tests/test_reset.py          data reset guards and behaviour
 tests/test_tv.py             TV routing, specs, panel-technology pricing
 tests/test_solar.py          solar routing, kW capacity, scope-based pricing

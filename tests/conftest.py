@@ -58,9 +58,19 @@ def chat():
     return _drive
 
 
-def answer_all(chat, session_id, opening_message, answers, limit=15):
-    """Play a whole conversation, answering with `answers[slot]` or the first chip."""
+def start(chat, session_id, language="en"):
+    """Open a chat and answer the language question, returning the greeting.
+
+    The chat asks which language to continue in before it greets anyone, so a
+    test that wants to look at the greeting has to get past that first.
+    """
     chat(session_id, "")
+    return chat(session_id, language)
+
+
+def answer_all(chat, session_id, opening_message, answers, limit=15, language="en"):
+    """Play a whole conversation, answering with `answers[slot]` or the first chip."""
+    start(chat, session_id, language)
     reply = chat(session_id, opening_message)
     for _ in range(limit):
         if reply.get("done"):

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
-from .. import catalog, nlu
+from .. import catalog, i18n, nlu
 from ..db import (
     dumps, execute, insert, loads, new_id, now_iso, parse_date, query_one,
     row_to_dict, today,
@@ -106,6 +106,7 @@ def get_or_create(session_id: str, referral_code: str | None = None,
 
 def _save(conversation: dict[str, Any], state: dict[str, Any],
           messages: list[dict[str, Any]], stage: str) -> None:
+    messages = _as_seen(messages, state)
     execute(
         "UPDATE conversations SET messages = ?, extracted_information = ?, stage = ?, "
         "customer_id = ?, intent_id = ?, updated_at = ? WHERE id = ?",
@@ -117,12 +118,52 @@ def _save(conversation: dict[str, Any], state: dict[str, Any],
     )
 
 
+def _as_seen(messages: list[dict[str, Any]], state: dict[str, Any]) -> list[dict[str, Any]]:
+    """The transcript records the conversation the buyer actually had.
+
+    Some replies are translated where they are written (a sentence with values
+    in it cannot be a dictionary key) and the rest at the rendering boundary.
+    Storing one of those in English and the other in Hindi would leave a
+    transcript in neither language, so what we keep is what they saw.
+
+    Their own messages are never touched: those are their words, not ours.
+    """
+    lang = lang_of(state)
+    if lang == i18n.DEFAULT:
+        return messages
+    return [
+        i18n.localise(m, lang) if m.get("role") == "bot" else m for m in messages
+    ]
+
+
 def transcript(conversation: dict[str, Any]) -> list[dict[str, Any]]:
     return loads(conversation.get("messages"), [])
 
 
 def state_of(conversation: dict[str, Any]) -> dict[str, Any]:
     return loads(conversation.get("extracted_information"), {})
+
+
+# --------------------------------------------------------------------------- #
+# language
+# --------------------------------------------------------------------------- #
+def lang_of(state: dict[str, Any]) -> str:
+    return state.get("lang") or i18n.DEFAULT
+
+
+def language_question() -> Question | None:
+    """Asked before anything else, when more than one language is offered.
+
+    It has to be readable by someone who cannot read the other option, so the
+    prompt is written in both and each chip is in its own script.
+    """
+    if len(i18n.LANGUAGES) < 2:
+        return None
+    return Question(
+        slot="_lang",
+        text=i18n.LANGUAGE_QUESTION,
+        chips=[_chip(l["chip"], l["code"]) for l in i18n.LANGUAGES],
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -180,11 +221,13 @@ def opening(conversation: dict[str, Any], state: dict[str, Any] | None = None) -
         messages.append(
             {
                 "role": "bot",
-                "text": (
-                    f"Hi 👋\n\nI can help you get a better price on **{sole.in_sentence()}** "
-                    f"by combining your order with other buyers in your city.\n\n"
-                    f"It takes a minute — then you can close this page and we'll message "
-                    f"you when the group price improves."
+                "text": i18n.phrase(
+                    "Hi 👋\n\nI can help you get a better price on **{product}** "
+                    "by combining your order with other buyers in your city.\n\n"
+                    "It takes a minute — then you can close this page and we'll message "
+                    "you when the group price improves.",
+                    lang_of(state),
+                    product=i18n.t(sole.in_sentence(), lang_of(state)),
                 ),
             }
         )
@@ -308,13 +351,17 @@ def next_question(state: dict[str, Any]) -> Question | None:
         )
         # No echo when we picked the product for them -- "Sure — plywood 👍"
         # in reply to a message they never sent reads as a non-sequitur.
-        preamble = "" if state.get("_auto_category") else f"Sure — {what} 👍\n\n"
+        lang = lang_of(state)
+        preamble = "" if state.get("_auto_category") else i18n.phrase(
+            "Sure — {product} 👍\n\n", lang, product=i18n.t(what, lang)
+        )
         return Question(
             slot="mobile",
-            text=(
-                f"{preamble}What's your mobile number?\n\n"
+            text=preamble + i18n.t(
+                "What's your mobile number?\n\n"
                 "We'll use it to check if you already have a request with us, and to "
-                "message you when your group price improves."
+                "message you when your group price improves.",
+                lang,
             ),
             input_type="tel",
             placeholder="10-digit mobile number",
@@ -332,7 +379,10 @@ def next_question(state: dict[str, Any]) -> Question | None:
                 text=category.quantity_question,
                 chips=[_chip(c) for c in category.quantity_chips],
                 input_type="number",
-                placeholder=f"Quantity in {category.unit}",
+                placeholder=i18n.phrase(
+                    "Quantity in {unit}", lang_of(state),
+                    unit=i18n.t(category.unit, lang_of(state)),
+                ),
             ))
         )
 
@@ -403,14 +453,22 @@ def addon_question(state: dict[str, Any]) -> Question | None:
 
     # The hint rides along: "Adhesive" on its own tells a buyer nothing,
     # "Fevicol, synthetic resin glue" tells them exactly what they are picking.
+    lang = lang_of(state)
+    # The emoji sits outside the translated label, so "🧴 Adhesive" does not
+    # have to be a dictionary key in its own right.
     chips = [
-        {**_chip(a.chip(), f"addon:{a.key}"), **({"hint": a.hint} if a.hint else {})}
+        {
+            **_chip(f"{a.emoji} {i18n.t(a.label, lang)}".strip(), f"addon:{a.key}"),
+            **({"hint": i18n.t(a.hint, lang)} if a.hint else {}),
+        }
         for a in remaining
     ]
     if chosen:
         chips.append(_chip("✅ That's everything", ADDON_DONE))
-        picked = ", ".join(category.addon_labels(chosen))
-        text = f"Added **{picked}** 👍\n\nAnything else with it?"
+        picked = ", ".join(i18n.t(l, lang) for l in category.addon_labels(chosen))
+        text = i18n.phrase(
+            "Added **{picked}** 👍\n\nAnything else with it?", lang, picked=picked
+        )
     else:
         chips.append(_chip("No thanks", ADDON_DONE))
         text = category.addon_prompt or (
@@ -509,6 +567,10 @@ def _addon_substate(state: dict[str, Any], product: catalog.Category) -> dict[st
     )
     sub = {k: state[k] for k in carried if state.get(k) not in (None, "", [])}
     sub["category"] = product.key
+    # The sub-flow renders its own acknowledgements, so it needs the language
+    # the buyer chose; without it the companion questions come back in Hindi
+    # but "Got it — 2 inch Nails" comes back in English.
+    sub["lang"] = lang_of(state)
     # The thread back to the order that prompted it, so the back office can put
     # the board and the glue in front of one supplier as a single bundle.
     if state.get("_group_code"):
@@ -550,7 +612,7 @@ def _addon_step(conversation: dict[str, Any], state: dict[str, Any],
                 continue
             sub = _addon_substate(state, product)
             state["_ax_state"] = sub
-            messages.append({"role": "bot", "text": _addon_opener(product)})
+            messages.append({"role": "bot", "text": _addon_opener(product, lang_of(state))})
 
         question = next_question(sub)
         if question is not None:
@@ -562,11 +624,14 @@ def _addon_step(conversation: dict[str, Any], state: dict[str, Any],
     return messages, None
 
 
-def _addon_opener(product: catalog.Category) -> str:
-    intro = product.intro or f"Now the {product.in_sentence()}"
-    return (
-        f"{intro}\n\nJust the few things a supplier will ask, so we can pool you "
-        f"with other buyers who need exactly the same thing."
+def _addon_opener(product: catalog.Category, lang: str) -> str:
+    intro = i18n.t(product.intro, lang) or i18n.phrase(
+        "Now the {product}", lang, product=i18n.t(product.in_sentence(), lang)
+    )
+    return intro + "\n\n" + i18n.t(
+        "Just the few things a supplier will ask, so we can pool you "
+        "with other buyers who need exactly the same thing.",
+        lang,
     )
 
 
@@ -588,15 +653,19 @@ def _bank_addon(conversation: dict[str, Any], state: dict[str, Any],
 
     state["_ax_intents"] = list(state.get("_ax_intents") or []) + [intent["id"]]
 
+    lang = lang_of(state)
+    yours = i18n.t(facts["your_quantity_text"], lang)
     if result["group_created"]:
-        text = (
-            f"Saved 👍 **{facts['your_quantity_text']}** of {intent['product']} — you're the "
-            f"first buyer in this one, so we'll pool other buyers' orders into it."
+        text = i18n.phrase(
+            "Saved 👍 **{yours}** of {product} — you're the first buyer in this one, "
+            "so we'll pool other buyers' orders into it.",
+            lang, yours=yours, product=i18n.t(intent["product"], lang),
         )
     else:
-        text = (
-            f"Even better — your **{facts['your_quantity_text']}** joins buyers already asking "
-            f"for the same thing. That group is now at **{facts['group_quantity_text']}**."
+        text = i18n.phrase(
+            "Even better — your **{yours}** joins buyers already asking for the same "
+            "thing. That group is now at **{pooled}**.",
+            lang, yours=yours, pooled=i18n.t(facts["group_quantity_text"], lang),
         )
 
     messages: list[dict[str, Any]] = [
@@ -653,7 +722,8 @@ def _active_requests(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _reset_requirement(state: dict[str, Any]) -> dict[str, Any]:
     """Drop the product-specific answers, keep who the customer is."""
-    keep = {"name", "mobile", "city", "area", "_customer_id", "_returning_checked"}
+    keep = {"name", "mobile", "city", "area", "lang",
+            "_customer_id", "_returning_checked"}
     return {k: v for k, v in state.items() if k in keep}
 
 
@@ -1173,20 +1243,28 @@ def acknowledgement(state: dict[str, Any], changed: list[str]) -> str | None:
         interesting.add(category.brand_field)
     if not interesting.intersection(changed):
         return None
+    lang = lang_of(state)
     qty = to_float(state.get("quantity"), 0) or 0
     spec = category.spec_description(state)
     # Before any spec is known this is just the bare noun ("AC"), which would
     # read as "2 ACs of AC".
     if spec.strip() == category.noun():
         spec = ""
+    spec = i18n.t(spec, lang)
     if qty and spec:
         # "2 × 1.5 Ton Split Inverter AC" rather than "2 ACs of 1.5 Ton ... AC".
-        counter = f"{qty:g} kg of" if category.unit == "kg" else f"{qty:g} ×"
-        return f"Got it — {counter} {spec}."
+        counter = (
+            i18n.phrase("{qty} kg of", lang, qty=f"{qty:g}")
+            if category.unit == "kg" else f"{qty:g} ×"
+        )
+        return i18n.phrase("Got it — {counter} {spec}.", lang, counter=counter, spec=spec)
     if qty:
-        return f"Got it — {category.qty_label(qty, state.get('unit'))}."
+        return i18n.phrase(
+            "Got it — {what}.", lang,
+            what=i18n.t(category.qty_label(qty, state.get("unit")), lang),
+        )
     if spec:
-        return f"Got it — {spec}."
+        return i18n.phrase("Got it — {what}.", lang, what=spec)
     return None
 
 
@@ -1223,6 +1301,17 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
     stage = conversation["stage"]
     messages: list[dict[str, Any]] = []
 
+    # --- first contact: which language? ------------------------------------ #
+    # Before the greeting, because the greeting itself has to be in it.
+    if stage == STAGE_GREETING and not text.strip():
+        question = language_question()
+        if question is not None:
+            messages.append({"role": "bot", "text": question.text})
+            history += messages
+            state["_expecting"] = question.slot
+            _save(conversation, state, history, STAGE_COLLECTING)
+            return _respond(session_id, STAGE_COLLECTING, messages, question, state, base_url)
+
     # --- first contact: greet, ask nothing else ---------------------------- #
     if stage == STAGE_GREETING and not text.strip():
         intro = opening(conversation, state)
@@ -1242,6 +1331,29 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
 
     history.append({"role": "user", "text": truncate(text, 500), "ts": now_iso()})
     expecting = state.get("_expecting")
+
+    # --- the language they picked ------------------------------------------ #
+    # Answered before we have greeted them, so the greeting itself lands in it.
+    if expecting == "_lang":
+        picked = i18n.language_of(text)
+        state["lang"] = picked or i18n.DEFAULT
+        intro = opening(conversation, state)
+        question = intro["question"]
+        state["_expecting"] = question.slot if question else None
+
+        if picked is not None:
+            messages += intro["messages"]
+            history += messages
+            _save(conversation, state, history, STAGE_COLLECTING)
+            return _respond(session_id, STAGE_COLLECTING, messages, question, state, base_url)
+
+        # Not a language at all -- they have skipped past it and started
+        # telling us what they need. Greet them in English and read the message
+        # in this same turn: throwing away the first thing someone says to us
+        # is a worse failure than not knowing their language.
+        asked = question.text if question else None
+        messages += [m for m in intro["messages"] if m.get("text") != asked]
+        expecting = state["_expecting"]
 
     # --- steering commands win over everything, at every stage -------------- #
     # "cancel my request" is never an answer to "Split or Window?".
@@ -1569,6 +1681,10 @@ def _finish_turn(session_id: str, conversation: dict[str, Any], state: dict[str,
 def _current_question(state: dict[str, Any], stage: str) -> Question | None:
     if stage == STAGE_DONE:
         return None
+    # Reloaded before answering it: ask again rather than dropping into the
+    # flow in whatever language we happened to default to.
+    if state.get("_expecting") == "_lang":
+        return language_question()
     # Mid-way through a companion product: resume its question, not the main
     # order's, which is already complete.
     sub = state.get("_ax_state")
@@ -1592,11 +1708,19 @@ def _respond(session_id: str, stage: str, messages: list[dict[str, Any]],
     if question is not None:
         payload["question"] = question.to_api()
         payload["chips"] = question.chips
-        payload["input"] = {"type": question.input_type, "placeholder": question.placeholder}
+        payload["input"] = {
+            "type": question.input_type,
+            # The page's own fallback placeholder is English, so send one
+            # rather than let it show through a Hindi conversation.
+            "placeholder": question.placeholder or "Type your message…",
+        }
     else:
         payload["chips"] = _done_chips(state)
         payload["input"] = {"type": "text", "placeholder": "Ask me anything…"}
-    return payload
+    # One place, at the very edge: everything the buyer reads is translated,
+    # and every value the server will read back is left exactly as written.
+    # The transcript stays in English, so the back office reads one language.
+    return i18n.localise(payload, lang_of(state))
 
 
 def _done_chips(state: dict[str, Any]) -> list[dict[str, str]]:
@@ -1647,26 +1771,31 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
 
     messages: list[dict[str, Any]] = []
 
+    lang = lang_of(state)
+    yours = i18n.t(facts["your_quantity_text"], lang)
     if result["group_created"]:
-        opener = (
-            f"You're the first buyer in a new **{facts['group_label']}** group 🚀\n\n"
-            f"Your {facts['your_quantity_text']} is now the starting quantity."
+        opener = i18n.phrase(
+            "You're the first buyer in a new **{group}** group 🚀\n\n"
+            "Your {yours} is now the starting quantity.",
+            lang, group=facts["group_label"], yours=yours,
         )
-        opener += (
-            " As more buyers with matching requirements join, we'll take the pooled "
+        opener += " " + i18n.t(
+            "As more buyers with matching requirements join, we'll take the pooled "
             "quantity to suppliers and get you a group price."
             if not facts.get("has_pricing")
-            else " As more buyers with matching requirements join, the price drops for everyone."
+            else "As more buyers with matching requirements join, the price drops for everyone.",
+            lang,
         )
         messages.append({"role": "bot", "text": opener})
     else:
         messages.append(
             {
                 "role": "bot",
-                "text": (
-                    f"Good news 🎉\n\nYour {facts['your_quantity_text']} requirement can be "
-                    f"combined with other buyers. There are now approximately "
-                    f"**{facts['group_quantity_text']}** in this buying group."
+                "text": i18n.phrase(
+                    "Good news 🎉\n\nYour {yours} requirement can be combined with other "
+                    "buyers. There are now approximately **{pooled}** in this buying group.",
+                    lang, yours=yours,
+                    pooled=i18n.t(facts["group_quantity_text"], lang),
                 ),
             }
         )
@@ -1687,9 +1816,10 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
         messages.append(
             {
                 "role": "bot",
-                "text": (
-                    f"There's another opportunity 👇 We're only **{facts['gap_text']}** away from "
-                    f"the next price level."
+                "text": i18n.phrase(
+                    "There's another opportunity 👇 We're only **{gap}** away from "
+                    "the next price level.",
+                    lang, gap=i18n.t(facts["gap_text"], lang),
                 ),
             }
         )
@@ -1697,10 +1827,11 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
         messages.append(
             {
                 "role": "bot",
-                "text": (
-                    f"Know someone planning to buy {category.label.lower()}? Invite them to this "
-                    f"group. If their requirement joins, the total quantity increases and "
-                    f"**your price can also become lower.**"
+                "text": i18n.phrase(
+                    "Know someone planning to buy {product}? Invite them to this group. "
+                    "If their requirement joins, the total quantity increases and "
+                    "**your price can also become lower.**",
+                    lang, product=i18n.t(category.label.lower(), lang),
                 ),
             }
         )
@@ -1710,6 +1841,20 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
     picked = category.addon_labels(_chosen_addons(state))
     if picked:
         pending = bool(state.get("_ax_queue"))
+        note = (
+            i18n.t(
+                "Each of these gets its own buying group too, so we can ask a "
+                "supplier to quote them for the whole pool. A few quick "
+                "questions on each and you're done.",
+                lang,
+            )
+            if pending else
+            i18n.phrase(
+                "We'll ask the supplier to quote these alongside the {product}, so the "
+                "group rate applies to them too. Prices come once the quote is in.",
+                lang, product=i18n.t(category.in_sentence(), lang),
+            )
+        )
         messages.append(
             {
                 "role": "bot",
@@ -1717,15 +1862,7 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
                     "type": "addons",
                     "title": "Also in your request",
                     "items": picked,
-                    "note": (
-                        "Each of these gets its own buying group too, so we can ask a "
-                        "supplier to quote them for the whole pool. A few quick "
-                        "questions on each and you're done."
-                        if pending else
-                        "We'll ask the supplier to quote these alongside the "
-                        f"{category.in_sentence()}, so the group rate applies to "
-                        "them too. Prices come once the quote is in."
-                    ),
+                    "note": note,
                 },
             }
         )
