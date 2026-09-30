@@ -51,6 +51,16 @@ The app is a single Python process plus a SQLite file, so any container host wor
 docker build -t groupbuy . && docker run -p 8000:8000 -v groupbuy-data:/data groupbuy
 ```
 
+### One click
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/havishshah2511/GB)
+
+Render reads `render.yaml`, so the only thing it asks for is `ADMIN_PASSWORD`.
+Everything else — the start command, the admin session secret, plywood as the
+offered category, no demo data, the `/health` check — is already declared.
+
+Afterwards turn on **Settings → Auto-Deploy** so every push ships itself.
+
 - **Render** — `render.yaml` is a ready blueprint (New → Blueprint → pick the repo).
 - **Railway / Fly.io / Cloud Run** — point them at the `Dockerfile`; they set `$PORT`.
 - **Anything Heroku-style** — the `Procfile` is there.
