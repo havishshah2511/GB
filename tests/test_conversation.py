@@ -97,11 +97,12 @@ def test_fridge_flow_collects_its_own_specification(chat):
     assert "Double Door" in intent["product"]
 
 
-def test_mobile_is_asked_after_the_product_questions(chat):
+def test_mobile_is_asked_after_the_product_and_quantity(chat):
     """Asking a stranger for their number before they have told us anything is
-    the fastest way to lose them, so it comes once the product is settled --
-    but before quantity and location, because it is what makes a returning
-    buyer recognisable before they retype a requirement we already have."""
+    the fastest way to lose them, so it comes once they have said what they
+    want and how much -- but still before the address, because it is what
+    makes a returning buyer recognisable before they type out one we already
+    have on file."""
     chat("s5", "")
     reply = chat("s5", "I need 2 AC")
     order = []

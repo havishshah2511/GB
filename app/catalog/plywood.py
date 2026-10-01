@@ -149,6 +149,11 @@ PLYWOOD_SLOTS = (
     Slot(
         name="core",
         label="Core",
+        # Not asked, for the same reason as the grade: it is a question only a
+        # timber trader enjoys. Still read when volunteered ("gurjan ply") and
+        # passed to the supplier. It is not a grouping field, so nothing about
+        # pricing or pooling depends on it.
+        asked=False,
         question="Any preference on the core timber?",
         priority=32,
         chips=("Hardwood", "Gurjan", "Poplar", "Eucalyptus", "No Preference"),
@@ -164,6 +169,11 @@ PLYWOOD_SLOTS = (
     Slot(
         name="finish",
         label="Finish",
+        # Not asked either. Teak-faced and laminated boards do cost more than
+        # plain, so this one is a real trade-off: the flow is shorter, and the
+        # supplier quotes against the default unless the buyer says otherwise
+        # ("one side teak"), which is still read.
+        asked=False,
         question="What surface finish?",
         priority=34,
         chips=("Plain / unfinished", "One side teak", "Both sides teak", "Laminated",
@@ -218,6 +228,11 @@ PLYWOOD_SLOTS = (
     Slot(
         name="application",
         label="Application",
+        # Useful to the supplier, but the engine asks a fixed number of
+        # optional questions -- so leaving this one askable simply means it
+        # takes the slot a removed question vacated, and the flow never
+        # actually gets shorter. Read when volunteered, never asked.
+        asked=False,
         question="What is it for?",
         priority=42,
         chips=("Furniture", "Interior / fit-out", "Kitchen", "Shuttering / construction",
@@ -238,6 +253,11 @@ PLYWOOD_SLOTS = (
     Slot(
         name="isi_marked",
         label="ISI marked",
+        # Useful to the supplier, but the engine asks a fixed number of
+        # optional questions -- so leaving this one askable simply means it
+        # takes the slot a removed question vacated, and the flow never
+        # actually gets shorter. Read when volunteered, never asked.
+        asked=False,
         question="Do you need ISI-marked (BIS certified) sheets?",
         priority=56,
         kind="bool",
@@ -252,6 +272,11 @@ PLYWOOD_SLOTS = (
     Slot(
         name="budget",
         label="Budget per sheet",
+        # Useful to the supplier, but the engine asks a fixed number of
+        # optional questions -- so leaving this one askable simply means it
+        # takes the slot a removed question vacated, and the flow never
+        # actually gets shorter. Read when volunteered, never asked.
+        asked=False,
         question="Do you have a budget per sheet in mind? (optional)",
         priority=60,
         kind="number",

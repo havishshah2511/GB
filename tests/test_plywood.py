@@ -151,18 +151,22 @@ def test_quantity_is_asked_after_the_specification_and_before_the_city(chat):
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
     assert order[:2] == ["thickness", "sheet_size"], order
-    assert "grade" not in order, "grade is read from what they say, never asked"
+    # Read from what the buyer says, never asked. Trade jargon (grade, core)
+    # and operator nice-to-haves (application, ISI, budget) are kept as fields
+    # but kept out of the conversation.
+    for quiet in ("grade", "core", "application", "isi_marked", "budget"):
+        assert quiet not in order, f"{quiet} should not be asked: {order}"
+    # This test skips the address, which is what surfaces the city fallback.
     assert "quantity" in order and "city" in order
     assert order.index("quantity") > order.index("sheet_size"), \
         f"quantity must follow the product detail: {order}"
     assert order.index("quantity") < order.index("city"), \
         f"quantity must come before location: {order}"
-    # The number is asked once the board is settled -- asking a stranger for
-    # it before they have told us anything loses them -- but before quantity
-    # and location, so a returning buyer is recognised early enough to matter.
-    assert order.index("mobile") > order.index("sheet_size"), \
-        f"the number must not come before the product questions: {order}"
-    assert order.index("mobile") < order.index("quantity") < order.index("city"), order
+    # The number comes once they have said what they want and how much of it,
+    # and still before the address, so a returning buyer is recognised before
+    # typing out one we already have on file.
+    assert order.index("quantity") < order.index("mobile") < order.index("city"), \
+        f"the number belongs after the quantity and before the address: {order}"
     # The name is the last thing asked about the requirement itself; companion
     # products are offered after it (and may be asked repeatedly, once per
     # pick, until the buyer is done).

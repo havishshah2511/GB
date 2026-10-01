@@ -21,12 +21,12 @@ from . import groups, intents, pricing, referrals
 
 MAX_OPTIONAL_QUESTIONS = 2
 
-#: Where "what's your number?" sits among the questions. After the product
-#: specification (plywood's last spec question is 42) and before quantity (44)
-#: and location (45): late enough that the buyer has invested something before
-#: being asked for a contact detail, early enough that a returning buyer is
-#: recognised before they retype a requirement we already have.
-MOBILE_PRIORITY = 43
+#: Where "what's your number?" sits among the questions: after the product
+#: and the quantity, before the address. Late enough that the buyer has said
+#: what they actually want before being asked for a contact detail, early
+#: enough that a returning buyer is recognised before they type out an address
+#: we already have on file.
+MOBILE_PRIORITY = 45
 
 STAGE_GREETING = "greeting"
 STAGE_COLLECTING = "collecting"
@@ -415,7 +415,7 @@ def next_question(state: dict[str, Any]) -> Question | None:
     # -- and the rest of the line is kept as the area.
     if not _slot_filled(state, "address"):
         candidates.append(
-            (45, Question(
+            (46, Question(
                 slot="address",
                 text=i18n.t("What's your address?", lang_of(state)),
                 placeholder="e.g. Satellite, Ahmedabad"))
@@ -424,7 +424,7 @@ def next_question(state: dict[str, Any]) -> Question | None:
         # The address came back without a city we recognise. It is the one
         # part we cannot do without, so ask for it plainly rather than guess.
         candidates.append(
-            (46, Question(
+            (47, Question(
                 slot="city",
                 text=i18n.t("Which city is that in?", lang_of(state)),
                 placeholder="e.g. Ahmedabad"))
