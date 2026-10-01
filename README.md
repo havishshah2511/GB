@@ -124,11 +124,15 @@ Anything the customer already said is never asked again:
 extracts product, quantity, brand, capacity, city and purchase date in one turn,
 then continues from split/window onward.
 
-- **Priority order**: product → **mobile** → quantity → specification → location →
-  purchase date → wait flexibility → brand flexibility → name.
-- **Mobile second.** The number is the identity, so it is asked immediately after
-  the product — that is what makes returning buyers recognisable before they are
-  put through the whole flow again. The intent is never created without it.
+- **Priority order**: product → specification → **mobile** → quantity → address →
+  purchase date → wait flexibility → name.
+- **Mobile after the product questions** (`MOBILE_PRIORITY`, between the last
+  specification question and quantity). Asking a stranger for their number
+  before they have told us anything is the fastest way to lose them; by this
+  point they have invested enough to answer. It still comes before quantity and
+  location, because the number is the identity — leave it to the very end and a
+  returning buyer retypes a requirement we already have before we notice we
+  know them. The intent is never created without it.
 - **Optional questions are capped** at two, and dropped after two unhelpful
   answers. Essential ones (quantity, city, name, mobile) get rephrased instead of
   repeated.
@@ -157,7 +161,7 @@ so the customer always has a way out instead of a repeated question.
 A number we already know short-circuits the flow:
 
 ```
-"I need AC" → "What's your mobile number?" → 9876543210
+"I need AC" → …the product questions… → "What's your mobile number?" → 9876543210
         ↓
 "Welcome back, Rahul 👋  You already have 1 active request:
  • 2 ACs · 1.5 Ton Split Inverter AC · Ahmedabad"
@@ -516,9 +520,42 @@ these 22 buyers also want adhesive; 340 kg of it". `buyers` is a head count;
 
 `quantity_priority` places the quantity question among the specification
 questions. Most products are counted first ("I need 2 AC"), so the default puts
-it before everything. Plywood sets it to 44 — after grade, thickness and sheet
-size, before location — because a sheet count only means something once the
-board is settled.
+it before everything. Plywood sets it to 44 — after thickness and sheet size,
+before location — because a sheet count only means something once the board is
+settled.
+
+### One address, not a city and an area
+
+The flow asks **"What's your address?"** once. The city is pulled out of that
+line and canonicalised, because buyers pool by city and the group code is built
+from it — `amdavad`, `Ahmedabad` and `अहमदाबाद` all have to reach the same
+place or each one starts a group of its own. Whatever is left of the line is
+kept verbatim as the area: it is a delivery address, and tidying it would lose
+the part a driver actually needs.
+
+If the address contains no city we recognise, that one question is asked on its
+own — it is the only part we cannot do without.
+
+An invitee arriving from a shared link inherits the city from the link, so the
+address they give cannot move them out of the group they were invited to.
+
+### Fields that are read but never asked
+
+`Slot(asked=False)` keeps a field without turning it into a question. Plywood's
+**grade** works this way: MR / BWR / BWP are trade jargon most buyers stall on,
+so the flow does not ask. It is still recognised when volunteered ("marine
+ply", "IS 710", "waterproof"), and otherwise takes the category default.
+
+This is deliberately *not* the same as a field that does not apply — a window
+AC has no inverter setting, and that must stay unset rather than pick up a
+default. `applies()` answers the first question, `should_ask()` the second, and
+`resolve_spec()` uses `applies()`. Getting that wrong makes an unasked grouping
+field a wildcard, `product_key()` then relaxes all the way to the fallback
+slab, and the group is quoted a 12 mm price for an 18 mm order.
+
+Grade is the biggest price lever in the category — an 18 mm sheet is ~₹1,650 in
+MR and ~₹2,650 in BWP Marine — so an unvolunteered grade is quoted at the
+default, never averaged across grades.
 
 ---
 
@@ -566,7 +603,7 @@ its own questions and standing slab table — graduates to its own module.
 
 | | Flow | Grouped by |
 | --- | --- | --- |
-| 🪵 **Plywood** | grade, thickness, sheet size, core, finish, brand, application, ISI | grade + thickness + size |
+| 🪵 **Plywood** | thickness, sheet size, core, finish, brand, application, ISI (grade is read, not asked) | grade + thickness + size |
 | ❄️ **Air Conditioner** | capacity, split/window, inverter, brand, star rating | capacity + type + inverter |
 | 🧊 **Refrigerator** | size in litres, door type, direct-cool/frost-free, brand, star rating, use | size + door type + defrost |
 | 📺 **Television** | screen size, LED/QLED/OLED, resolution, smart, brand, use, wall mount | size + panel + resolution |

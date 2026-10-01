@@ -58,6 +58,21 @@ def chat():
     return _drive
 
 
+def address_from(answers):
+    """The flow asks for one address instead of a city and an area.
+
+    Test fixtures still describe a requirement the way a person thinks about
+    it -- area and city -- so build the address line from them rather than
+    restating it in every fixture.
+    """
+    answers = dict(answers)
+    if "address" not in answers and (answers.get("area") or answers.get("city")):
+        answers["address"] = ", ".join(
+            part for part in (answers.get("area"), answers.get("city")) if part
+        )
+    return answers
+
+
 def start(chat, session_id, language="en"):
     """Open a chat and answer the language question, returning the greeting.
 
@@ -70,6 +85,7 @@ def start(chat, session_id, language="en"):
 
 def answer_all(chat, session_id, opening_message, answers, limit=15, language="en"):
     """Play a whole conversation, answering with `answers[slot]` or the first chip."""
+    answers = address_from(answers)
     start(chat, session_id, language)
     reply = chat(session_id, opening_message)
     for _ in range(limit):

@@ -12,7 +12,7 @@ from app import catalog
 from app.db import loads
 from app.services import groups, intents
 
-from conftest import answer_all
+from conftest import address_from, answer_all
 
 PLY = {
     "grade": "BWR", "thickness": "18 mm", "sheet_size": "8 x 4 ft",
@@ -28,7 +28,7 @@ DONE = "__addons_done__"
 
 def drive_to_addons(chat, session, name, mobile):
     """Answer everything up to the companion-product step."""
-    answers = {**PLY, "name": name, "mobile": mobile}
+    answers = address_from({**PLY, "name": name, "mobile": mobile})
     chat(session, "")
     reply = chat(session, "I need plywood")
     for _ in range(22):
@@ -87,7 +87,7 @@ def test_the_offer_comes_last_not_first(chat):
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
     assert order[-1] == "_addons"
-    for earlier in ("grade", "thickness", "quantity", "city", "name"):
+    for earlier in ("thickness", "quantity", "address", "name"):
         assert earlier in order and order.index(earlier) < order.index("_addons")
 
 

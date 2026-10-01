@@ -42,12 +42,14 @@ def _inches(number: str) -> str:
 # --------------------------------------------------------------------------- #
 ADHESIVE = Category(
     key="ADHESIVE",
-    label="Adhesive",
+    # Named for the brand every carpenter says out loud. It is an example, not
+    # a commitment: the flow still asks which brand and the group is quoted on
+    # whatever it actually buys.
+    label="Adhesive (Fevicol)",
     plural_label="adhesive",
     emoji="🧴",
     unit="kg",
     unit_plural="kg",
-    addon_only=True,
     quantity_question="How much adhesive do you need, in kg?",
     quantity_chips=("1", "5", "10", "20", "50"),
     quantity_priority=44,
@@ -118,6 +120,8 @@ ADHESIVE = Category(
     slabs={},
     default_slab_key="",
     quantity_patterns=_qty("kg", "kgs?", "kilos?", "tins?", "buckets?", "packs?"),
+    triggers=(r"\bfevicol\b", r"\badhesive\b", r"\bglue\b", r"\bgond\b",
+              r"\bsr\s*998\b"),
     product_noun="Adhesive",
     brand_field="adhesive_brand",
     min_group_quantity=5,
@@ -134,7 +138,6 @@ NAILS = Category(
     emoji="📌",
     unit="kg",
     unit_plural="kg",
-    addon_only=True,
     quantity_question="How many kg of nails?",
     quantity_chips=("1", "2", "5", "10", "25"),
     quantity_priority=44,
@@ -207,6 +210,7 @@ NAILS = Category(
     slabs={},
     default_slab_key="",
     quantity_patterns=_qty("kg", "kgs?", "kilos?", "packets?", "boxes?"),
+    triggers=(r"\bnails?\b", r"\bpanel\s*pins?\b", r"\bkeel\b", r"\bbrad\b"),
     product_noun="Nails",
     min_group_quantity=5,
     intro="Now the nails 📌",

@@ -112,7 +112,8 @@ def test_solar_question_order(chat):
         reply = chat("sol2", {**SOLAR, "name": "A", "mobile": "9812300112"}.get(question["slot"])
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
-    assert order[:4] == ["mobile", "module_type", "scope", "mounting"], order
+    assert order[:3] == ["module_type", "scope", "mounting"], order
+    assert order.index("mobile") < order.index("city"), order
     assert order.index("preferred_brand") < order.index("city")
     assert order[-1] == "name"
 

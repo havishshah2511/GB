@@ -18,6 +18,22 @@ def cards(reply, kind):
     return [m["card"] for m in reply["messages"] if m.get("card", {}).get("type") == kind]
 
 
+def walk_to(chat, session, reply, slot, answers=AC_ANSWERS, limit=14):
+    """Answer questions until `slot` is the one being asked.
+
+    The number is collected after the product questions, so a test that wants
+    to look at it has to get through them first.
+    """
+    for _ in range(limit):
+        question = reply.get("question")
+        assert question is not None, f"never reached {slot}"
+        if question["slot"] == slot:
+            return reply
+        reply = chat(session, answers.get(question["slot"])
+                     or (question["chips"][0]["value"] if question["chips"] else "skip"))
+    raise AssertionError(f"never reached {slot}")
+
+
 def texts(reply):
     return "\n".join(m.get("text", "") for m in reply["messages"])
 
@@ -62,7 +78,7 @@ def test_known_mobile_offers_new_or_past(chat):
 
     chat("r4b", "")
     reply = chat("r4b", "I need AC")
-    assert reply["question"]["slot"] == "mobile"
+    reply = walk_to(chat, "r4b", reply, "mobile")
 
     reply = chat("r4b", AC_ANSWERS["mobile"])
     assert reply["question"]["slot"] == "_returning_choice"

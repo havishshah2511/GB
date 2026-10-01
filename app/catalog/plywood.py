@@ -83,6 +83,15 @@ PLYWOOD_SLOTS = (
     Slot(
         name="grade",
         label="Grade",
+        # Not asked: the grade names are trade jargon and most buyers stall on
+        # them. It is still read when volunteered ("marine ply", "IS 710",
+        # "waterproof"), and otherwise takes the category default below, so
+        # the group always has a grade a supplier can quote against.
+        #
+        # Note this is the biggest single price lever in the category -- an
+        # 18 mm sheet is ~1,650 in MR and ~2,650 in BWP Marine -- so an
+        # unvolunteered grade is quoted at the default, not averaged.
+        asked=False,
         question=(
             "Which grade of plywood?\n\n"
             "MR is for dry interiors, BWR resists moisture, "

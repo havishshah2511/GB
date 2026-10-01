@@ -168,8 +168,14 @@ def test_exit_after_completing_reassures_and_links(chat):
 
 def test_a_missed_answer_offers_a_way_out(chat):
     chat("c8", "")
-    chat("c8", "I need 2 AC")
-    chat("c8", "9876522008")
+    reply = chat("c8", "I need 2 AC")
+    # Walk to a free-text question, where an unparseable answer is a miss.
+    for _ in range(12):
+        question = reply.get("question")
+        assert question is not None
+        if question["slot"] == "mobile":
+            break
+        reply = chat("c8", question["chips"][0]["value"] if question["chips"] else "skip")
     reply = chat("c8", "qwertyuiop")          # unparseable
     assert {"cancel my request", "change product"} <= chips(reply), \
         "no escape route offered after a miss"

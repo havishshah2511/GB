@@ -142,7 +142,10 @@ def looks_like_a_product(text: str) -> bool:
 def quick_options() -> list[dict[str, str]]:
     """Opening chips shown by the chatbot."""
     return [
-        {"label": f"{c.emoji} {c.label}", "value": c.label, "category": c.key}
+        # The value is the key, not the label: a menu pick is an
+        # instruction, and reading it as free text let "Nails & pins" set
+        # the nail type to "Panel pin".
+        {"label": f"{c.emoji} {c.label}", "value": f"category:{c.key}", "category": c.key}
         for c in CATEGORIES.values()
     ]
 

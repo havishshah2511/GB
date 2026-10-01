@@ -14,6 +14,8 @@ from app.catalog import supplies
 from app.db import loads
 from app.services import groups, intents
 
+from conftest import address_from
+
 PLY = {
     "grade": "BWR", "thickness": "18 mm", "sheet_size": "8 x 4 ft",
     "core": "Hardwood", "finish": "Plain / unfinished",
@@ -30,7 +32,7 @@ DONE = "__addons_done__"
 # helpers
 # --------------------------------------------------------------------------- #
 def drive_to_addons(chat, session, name, mobile, **over):
-    answers = {**PLY, **over, "name": name, "mobile": mobile}
+    answers = address_from({**PLY, **over, "name": name, "mobile": mobile})
     chat(session, "")
     reply = chat(session, "I need plywood")
     for _ in range(24):
@@ -95,19 +97,21 @@ def test_every_companion_product_is_a_real_category():
     for addon in catalog.get("PLY").addons:
         product = catalog.get(addon.category_key)
         assert product is not None, addon.key
-        assert product.addon_only, f"{product.key} must not appear in the opening menu"
         assert len(product.grouping_fields) >= 1, product.key
         # Every grouping field is something the flow actually asks about.
         names = {s.name for s in product.slots}
         assert set(product.grouping_fields) <= names, product.key
 
 
-def test_companion_products_are_never_offered_in_the_opening_menu(chat):
-    """They are reached by picking them alongside an order, not chosen first."""
+def test_companion_products_are_reachable_both_ways(chat):
+    """Adhesive and nails are sold in their own right as well as alongside a
+    board, so they appear in the menu. The rest are companions only."""
     offered = {c.key for c in catalog.all_categories()}
+    assert {"ADHESIVE", "NAILS"} <= offered, offered
+    for key in ("SCREWS", "FITTINGS", "LAMINATE", "EDGEBAND"):
+        assert key not in offered, f"{key} should be a companion, not a menu item"
     for key in supplies.KEYS:
-        assert key not in offered, key
-        assert key in catalog.ALL_CATEGORIES, f"{key} must still resolve for the back office"
+        assert key in catalog.ALL_CATEGORIES, f"{key} must resolve for the back office"
 
 
 def test_companion_products_start_with_no_price():

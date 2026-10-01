@@ -59,11 +59,29 @@ HINDI: dict[str, str] = {
     "request with us, and to message you when your group price improves.":
         "आपका मोबाइल नंबर क्या है?\n\nइससे हम देख लेंगे कि आपकी कोई पुरानी रिक्वेस्ट "
         "है या नहीं, और ग्रुप की कीमत घटते ही आपको मैसेज कर देंगे।",
+    "Almost there 👍 What's your mobile number?\n\nWe'll use it to check if you "
+    "already have a request with us, and to message you when your group price "
+    "improves.":
+        "बस थोड़ा और 👍 आपका मोबाइल नंबर क्या है?\n\nइससे हम देख लेंगे कि आपकी कोई "
+        "पुरानी रिक्वेस्ट है या नहीं, और ग्रुप की कीमत घटते ही आपको मैसेज कर देंगे।",
     "10-digit mobile number": "10 अंकों का मोबाइल नंबर",
+    "Hello 👋\n\nWhat are you looking for?": "नमस्ते 👋\n\nआपको क्या चाहिए?",
+    "What's your address?": "आपका पता क्या है?",
+    "e.g. Satellite, Ahmedabad": "जैसे सैटेलाइट, अहमदाबाद",
+    "Which city is that in?": "यह किस शहर में है?",
+    "Just the area and city is enough 🙂 Where should we deliver?":
+        "बस इलाका और शहर बता दीजिए 🙂 डिलीवरी कहाँ करनी है?",
     "Which city are you in?": "आप किस शहर में हैं?",
     "e.g. Ahmedabad": "जैसे अहमदाबाद",
     "Which area within the city?": "शहर में कौन-से इलाके में?",
     "e.g. Satellite": "जैसे सैटेलाइट",
+    "Adhesive (Fevicol)": "अडहेसिव (फ़ेविकोल)",
+    "Or just type it, e.g. “100 sheets plywood”":
+        "या लिख दीजिए, जैसे “100 शीट प्लाईवुड”",
+    "Or just type it, e.g. “5 kg nails”": "या लिख दीजिए, जैसे “5 किलो कील”",
+    "Anything else I can help you pool up?": "और कुछ जिसमें मैं मदद कर सकूँ?",
+    "Want to set up something new?": "कुछ नया शुरू करें?",
+    "What would you like to buy instead?": "इसकी जगह क्या खरीदना चाहेंगे?",
     "When are you planning to purchase?": "आप कब तक खरीदना चाहते हैं?",
     "If waiting another 5-7 days could give you a better group price, would you "
     "be comfortable waiting?":

@@ -24,7 +24,7 @@ def test_the_language_is_settled_before_the_greeting(chat):
 
 def test_opening_offers_every_category(chat):
     reply = start(chat, "s1")
-    assert "combining your requirement" in texts(reply)
+    assert "what are you looking for" in texts(reply).lower()
     labels = [c["label"] for c in reply["chips"]]
     assert any("Air Conditioner" in l for l in labels)
     assert any("Refrigerator" in l for l in labels)
@@ -32,6 +32,8 @@ def test_opening_offers_every_category(chat):
     assert any("Solar" in l for l in labels)
     # ...and a way in for anything without a dedicated flow.
     assert any("Something else" in l for l in labels)
+    # A menu pick names the category; it is never re-read as free text.
+    assert all(c["value"].startswith("category:") for c in reply["chips"]), reply["chips"]
 
 
 def test_never_asks_for_information_already_given(chat):
@@ -95,9 +97,11 @@ def test_fridge_flow_collects_its_own_specification(chat):
     assert "Double Door" in intent["product"]
 
 
-def test_mobile_is_asked_straight_after_the_product(chat):
-    """The mobile number identifies returning buyers, so it is collected as soon
-    as the product is known -- before the rest of the requirement."""
+def test_mobile_is_asked_after_the_product_questions(chat):
+    """Asking a stranger for their number before they have told us anything is
+    the fastest way to lose them, so it comes once the product is settled --
+    but before quantity and location, because it is what makes a returning
+    buyer recognisable before they retype a requirement we already have."""
     chat("s5", "")
     reply = chat("s5", "I need 2 AC")
     order = []
@@ -112,7 +116,9 @@ def test_mobile_is_asked_straight_after_the_product(chat):
 
     assert "name" in order and "mobile" in order
     assert order.index("mobile") < order.index("name")
-    assert order.index("mobile") == 0, f"mobile should lead, got {order}"
+    assert order.index("mobile") > 0, f"mobile must not lead, got {order}"
+    assert order.index("mobile") < order.index("city"), \
+        f"mobile must precede location so returning buyers are spotted: {order}"
     # the name still comes at the very end, once the requirement is understood
     assert order.index("name") >= len(order) - 2
 
@@ -142,10 +148,12 @@ def test_ac_question_order(chat):
         reply = chat("order1", answers.get(question["slot"])
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
-    assert order[:7] == [
-        "mobile", "capacity", "ac_type", "inverter",
+    assert order[:6] == [
+        "capacity", "ac_type", "inverter",
         "preferred_brand", "brand_flexible", "star_rating",
     ], order
+    assert order.index("star_rating") < order.index("mobile") < order.index("city"), \
+        f"the number sits between the product questions and location: {order}"
     assert order.index("star_rating") < order.index("city"), "rating must precede location"
     assert order[-1] == "name"
 
@@ -153,6 +161,14 @@ def test_ac_question_order(chat):
 def test_mobile_is_mandatory_before_the_intent_becomes_active(chat):
     chat("s6", "")
     reply = chat("s6", "I need 2 AC 1.5 ton split inverter in Ahmedabad within 7 days")
+
+    # Walk to the number, wherever the product questions leave it.
+    for _ in range(12):
+        question = reply.get("question")
+        assert question is not None, "never reached the mobile question"
+        if question["slot"] == "mobile":
+            break
+        reply = chat("s6", question["chips"][0]["value"] if question["chips"] else "skip")
 
     # The flow cannot get past the mobile question without a valid number.
     assert reply["question"]["slot"] == "mobile"

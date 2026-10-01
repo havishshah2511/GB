@@ -21,6 +21,13 @@ from . import groups, intents, pricing, referrals
 
 MAX_OPTIONAL_QUESTIONS = 2
 
+#: Where "what's your number?" sits among the questions. After the product
+#: specification (plywood's last spec question is 42) and before quantity (44)
+#: and location (45): late enough that the buyer has invested something before
+#: being asked for a contact detail, early enough that a returning buyer is
+#: recognised before they retype a requirement we already have.
+MOBILE_PRIORITY = 43
+
 STAGE_GREETING = "greeting"
 STAGE_COLLECTING = "collecting"
 STAGE_CONTACT = "contact"
@@ -50,6 +57,25 @@ class Question:
 
 def _chip(label: str, value: str | None = None) -> dict[str, str]:
     return {"label": label, "value": value if value is not None else label}
+
+
+def _category_chips(state: dict[str, Any],
+                    extra: list[dict[str, str]] | None = None) -> list[dict[str, str]]:
+    """The product menu.
+
+    The value is the category key, not the label, because the label goes back
+    through the extractor: tapping "📌 Nails & pins" was setting the nail
+    *type* to "Panel pin", since "pins" is one of its synonyms. A menu choice
+    is an instruction, not something to be read for specifications.
+
+    The emoji sits outside the translated label, so "🪵 Plywood" does not
+    have to be a dictionary key of its own.
+    """
+    lang = lang_of(state)
+    return [
+        _chip(f"{c.emoji} {i18n.t(c.label, lang)}", f"category:{c.key}")
+        for c in catalog.all_categories()
+    ] + (extra or [])
 
 
 TIMING_CHIPS = [
@@ -238,20 +264,16 @@ def opening(conversation: dict[str, Any], state: dict[str, Any] | None = None) -
 
     if group is None:
         messages.append(
-            {
-                "role": "bot",
-                "text": (
-                    "Hi 👋\n\nI can help you get a better price by combining your requirement "
-                    "with other buyers.\n\nWhat are you looking to buy?"
-                ),
-            }
+            {"role": "bot", "text": i18n.t("Hello 👋\n\nWhat are you looking for?",
+                                           lang_of(state))}
         )
 
     question = Question(
         slot="category",
         text="",
-        chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
-        placeholder="Or just type it, e.g. “I need 2 AC”",
+        chips=_category_chips(state),
+        placeholder=i18n.t("Or just type it, e.g. “100 sheets plywood”",
+                           lang_of(state)),
     )
     return {"messages": messages, "question": question}
 
@@ -321,7 +343,7 @@ def next_question(state: dict[str, Any]) -> Question | None:
             return Question(
                 slot="category",
                 text="What are you looking to buy?",
-                chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
+                chips=_category_chips(state),
             )
         # Nothing to choose between, so choose it and move on. Also covers the
         # paths that clear the requirement, like "change product".
@@ -340,35 +362,30 @@ def next_question(state: dict[str, Any]) -> Question | None:
             placeholder="e.g. cement, LED bulbs, packaging boxes",
         )
 
-    # The mobile number comes straight after the product so we can recognise a
-    # returning buyer before putting them through the whole flow again.
-    if not _slot_filled(state, "mobile"):
-        # Name what they actually asked for; "Sure — something else" is nonsense.
-        what = (
-            str(state.get("product_name")).strip().lower()
-            if category.open_ended and state.get("product_name")
-            else category.label.lower()
-        )
-        # No echo when we picked the product for them -- "Sure — plywood 👍"
-        # in reply to a message they never sent reads as a non-sequitur.
-        lang = lang_of(state)
-        preamble = "" if state.get("_auto_category") else i18n.phrase(
-            "Sure — {product} 👍\n\n", lang, product=i18n.t(what, lang)
-        )
-        return Question(
-            slot="mobile",
-            text=preamble + i18n.t(
-                "What's your mobile number?\n\n"
-                "We'll use it to check if you already have a request with us, and to "
-                "message you when your group price improves.",
-                lang,
-            ),
-            input_type="tel",
-            placeholder="10-digit mobile number",
-        )
-
     optional_asked = len(state.get("_optional_asked", []))
     candidates: list[tuple[int, Question]] = []
+
+    # The mobile number sits after the product questions: asking a stranger
+    # for their number before they have told us anything is the fastest way to
+    # lose them, and by this point they have invested enough to answer.
+    #
+    # It still comes before quantity and location, because it is what lets us
+    # recognise a returning buyer -- leave it to the very end and they answer
+    # the whole flow again before we notice we already know them.
+    if not _slot_filled(state, "mobile"):
+        candidates.append(
+            (MOBILE_PRIORITY, Question(
+                slot="mobile",
+                text=i18n.t(
+                    "Almost there 👍 What's your mobile number?\n\n"
+                    "We'll use it to check if you already have a request with us, and to "
+                    "message you when your group price improves.",
+                    lang_of(state),
+                ),
+                input_type="tel",
+                placeholder="10-digit mobile number",
+            ))
+        )
 
     # Quantity competes on priority like any other question, so a category can
     # place it after its specification (plywood) or first (AC).
@@ -393,16 +410,24 @@ def next_question(state: dict[str, Any]) -> Question | None:
             continue
         candidates.append((slot.priority, _category_question(category, slot, state)))
 
-    if not _slot_filled(state, "city"):
+    # One address question instead of two. The city is pulled out of it for
+    # grouping -- buyers pool by city, so it has to be a known, canonical name
+    # -- and the rest of the line is kept as the area.
+    if not _slot_filled(state, "address"):
         candidates.append(
-            (45, Question(slot="city", text="Which city are you in?",
-                          placeholder="e.g. Ahmedabad"))
+            (45, Question(
+                slot="address",
+                text=i18n.t("What's your address?", lang_of(state)),
+                placeholder="e.g. Satellite, Ahmedabad"))
         )
-    if not _slot_filled(state, "area"):
+    elif not _slot_filled(state, "city"):
+        # The address came back without a city we recognise. It is the one
+        # part we cannot do without, so ask for it plainly rather than guess.
         candidates.append(
-            (46, Question(slot="area", text="Which area within the city?",
-                          chips=[_chip("Skip", "skip")], optional=True,
-                          placeholder="e.g. Satellite"))
+            (46, Question(
+                slot="city",
+                text=i18n.t("Which city is that in?", lang_of(state)),
+                placeholder="e.g. Ahmedabad"))
         )
     if not _slot_filled(state, "desired_purchase_date"):
         candidates.append(
@@ -704,7 +729,7 @@ def contact_question(state: dict[str, Any]) -> Question | None:
 # --------------------------------------------------------------------------- #
 #: Slots whose answer could plausibly *be* a command word, where a one-word
 #: reply should be taken at face value instead ("Bye" as a name, say).
-_LITERAL_SLOTS = ("name", "area", "city")
+_LITERAL_SLOTS = ("name", "area", "city", "address")
 
 
 def detect_command(text: str, expecting: str | None) -> str | None:
@@ -756,7 +781,7 @@ def _cancel(state: dict[str, Any], base_url: str) -> dict[str, Any]:
             "question": Question(
                 slot="category",
                 text="Anything else I can help you pool up?",
-                chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()]
+                chips=_category_chips(state)
                 + [_chip("No thanks", "exit")],
             ),
         }
@@ -779,7 +804,7 @@ def _cancel(state: dict[str, Any], base_url: str) -> dict[str, Any]:
             "question": Question(
                 slot="category",
                 text="Want to set up something new?",
-                chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()]
+                chips=_category_chips(state)
                 + [_chip("No thanks", "exit")],
             ),
         }
@@ -811,7 +836,7 @@ def _cancel(state: dict[str, Any], base_url: str) -> dict[str, Any]:
         "question": Question(
             slot="category",
             text="",
-            chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
+            chips=_category_chips(state),
             placeholder="e.g. “I need 2 AC”",
         ),
     }
@@ -899,8 +924,9 @@ def _change_product(state: dict[str, Any]) -> dict[str, Any]:
         "question": Question(
             slot="category",
             text="What would you like to buy instead?",
-            chips=[_chip(f"{c.emoji} {c.label}", c.label) for c in catalog.all_categories()],
-            placeholder="Or just type it, e.g. “3 double door fridge”",
+            chips=_category_chips(state),
+            placeholder=i18n.t("Or just type it, e.g. “5 kg nails”",
+                               lang_of(state)),
         ),
     }
 
@@ -1112,7 +1138,7 @@ def _mark_skip(state: dict[str, Any], slot: str) -> None:
 
 #: Slots worth re-asking until answered. Everything else is skipped after two
 #: unproductive attempts so the bot can never trap the customer in a loop.
-ESSENTIAL_SLOTS = ("category", "quantity", "city", "name", "mobile")
+ESSENTIAL_SLOTS = ("category", "quantity", "address", "city", "name", "mobile")
 
 
 #: Shown instead of repeating a question verbatim when the answer didn't land.
@@ -1120,6 +1146,7 @@ ESSENTIAL_SLOTS = ("category", "quantity", "city", "name", "mobile")
 CLARIFIERS = {
     "quantity": "No worries — just the number is fine. How many do you need?",
     "city": "Almost there 🙂 Which city should I look for other buyers in?",
+    "address": "Just the area and city is enough 🙂 Where should we deliver?",
     "name": "What name should I save this under?",
     "mobile": ("Let's try that again — a 10-digit number, digits only. It's only used to "
                "send you price updates and to find your requests later."),
@@ -1141,7 +1168,7 @@ def _salvage(state: dict[str, Any], expecting: str | None, text: str) -> bool:
     sense of it we take the raw text rather than asking a third time. Mobile is
     deliberately excluded: an unparseable number is useless to us and to them.
     """
-    if expecting not in ("name", "area", "city"):
+    if expecting not in ("name", "area", "city", "address"):
         return False
     if int(dict(state.get("_misses", {})).get(expecting, 0)) < 2:
         return False

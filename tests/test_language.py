@@ -14,6 +14,8 @@ from app.db import loads
 from app.nlu import rules
 from app.services import conversation, groups, intents
 
+from conftest import address_from
+
 DONE = "__addons_done__"
 
 #: Answers in each language, keyed by slot. The values a chip sends are always
@@ -42,6 +44,7 @@ def plywood_only(monkeypatch):
 
 def run(chat, session, lang, answers, mobile, picks=(), limit=45):
     """Play a whole conversation in one language. Returns every reply."""
+    answers = address_from(answers)
     replies = [chat(session, "")]
     replies.append(chat(session, lang))
     picks = list(picks)
@@ -87,8 +90,8 @@ def test_choosing_english_leaves_the_flow_exactly_as_it_was(chat):
     reply = chat("l2", "")
     reply = chat("l2", "en")
 
-    assert reply["question"]["slot"] == "mobile"
-    assert "mobile number" in said([reply]).lower()
+    assert reply["question"]["slot"] == "thickness"
+    assert "what thickness" in said([reply]).lower()
 
 
 def test_choosing_hindi_switches_the_questions(chat):
@@ -96,8 +99,8 @@ def test_choosing_hindi_switches_the_questions(chat):
     reply = chat("l3", "hi")
 
     blurb = said([reply])
-    assert "मोबाइल" in blurb, blurb
-    assert "mobile number" not in blurb.lower()
+    assert "कितनी मोटाई" in blurb, blurb
+    assert "what thickness" not in blurb.lower()
 
 
 @pytest.mark.parametrize("typed,expected", [
@@ -151,7 +154,9 @@ def test_the_specification_is_stored_in_one_language(chat):
 
     group = groups.list_groups(category="PLY")[0]
     assert groups.spec_of(group) == {
-        "grade": "BWR", "thickness": "18 mm", "sheet_size": "8 x 4 ft",
+        # Grade is not asked, so it takes the category default -- in
+        # English, like every other stored value.
+        "grade": "MR", "thickness": "18 mm", "sheet_size": "8 x 4 ft",
         "preferred_brand": "Century",
     }
 
@@ -159,8 +164,7 @@ def test_the_specification_is_stored_in_one_language(chat):
 def test_a_chip_sends_english_however_it_is_labelled(chat):
     """The label is for the buyer, the value is for the server."""
     chat("m4", "")
-    chat("m4", "hi")
-    reply = chat("m4", "9812500004")          # -> the grade question
+    reply = chat("m4", "hi")                  # -> the thickness question
 
     labels = [c["label"] for c in reply["chips"]]
     values = [c["value"] for c in reply["chips"]]
@@ -179,7 +183,7 @@ def test_the_transcript_records_the_conversation_the_buyer_actually_had(chat):
     assert "मोबाइल" in bot, bot
     assert "mobile number" not in bot.lower()
 
-    typed = [m.get("text") for m in stored if m.get("role") == "user"]
+    typed = " ".join(m.get("text", "") for m in stored if m.get("role") == "user")
     assert "अहमदाबाद" in typed, typed
 
 
@@ -188,7 +192,11 @@ def test_the_customer_record_is_not_translated(chat):
 
     record = intents.list_intents(category="PLY")[0]
     assert record["city"] == "Ahmedabad"
-    assert record["product"] == "BWR 18 mm 8 x 4 ft Plywood"
+    # No grade was stated, and the intent keeps it that way: that is what
+    # lets this buyer pool into whichever grade group already exists.
+    # The group resolves it to the default only when one is created.
+    assert record["product"] == "18 mm 8 x 4 ft Plywood"
+    assert groups.spec_of(groups.list_groups(category="PLY")[0])["grade"] == "MR"
 
 
 # --------------------------------------------------------------------------- #

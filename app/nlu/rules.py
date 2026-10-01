@@ -15,7 +15,9 @@ from typing import Any
 
 from .. import catalog
 from ..db import today
-from ..utils import clean_name, detect_unit, normalise_mobile, normalise_product, to_float
+from ..utils import (
+    clean_name, detect_unit, normalise_mobile, normalise_product, to_float, truncate,
+)
 
 # --------------------------------------------------------------------------- #
 # vocabularies
@@ -256,6 +258,37 @@ def extract_city(text: str) -> str | None:
         if pattern.search(text):
             return name
     return None
+
+
+def _read_address(text: str) -> dict[str, Any] | None:
+    """One address line -> the area as written, plus a canonical city.
+
+    Buyers pool by city, so the city has to come out as a name the matching
+    engine already knows -- "amdavad" and "अहमदाबाद" both have to reach
+    Ahmedabad or they each start a group of their own. Everything else in the
+    line is kept verbatim as the area: it is a delivery address, and tidying
+    it would lose the part a driver actually needs.
+    """
+    cleaned = re.sub(rf"[^A-Za-z0-9{DEVANAGARI}\s,\-/#.()']", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,-")
+    if not cleaned or _is_filler(cleaned):
+        return None
+
+    found: dict[str, Any] = {"address": truncate(cleaned, 120)}
+    city = extract_city(cleaned)
+    if city:
+        found["city"] = city
+        # Drop the city from the area line so the header does not read
+        # "Satellite, Ahmedabad, Ahmedabad".
+        area = cleaned
+        for alias in CITIES.get(city, ()) + CITIES_DEVANAGARI.get(city, ()):
+            area = re.sub(rf"\b{re.escape(alias)}\b", " ", area, flags=re.I)
+        area = re.sub(r"\s+", " ", area).strip(" ,-")
+        if area:
+            found["area"] = truncate(area, 80)
+    else:
+        found["area"] = truncate(cleaned, 80)
+    return found
 
 
 def extract_area(text: str, city: str | None) -> str | None:
@@ -587,6 +620,13 @@ def extract(text: str, state: dict[str, Any], expecting: str | None = None) -> d
         return found
 
     text = ascii_digits(text).strip()
+
+    # A menu pick names the category and nothing else. Reading it as free text
+    # let "📌 Nails & pins" set the nail type to "Panel pin".
+    chosen = re.fullmatch(r"category:([A-Za-z_]+)", text)
+    if chosen and catalog.get(chosen.group(1)):
+        return {"category": chosen.group(1).upper()}
+
     category = catalog.get(state.get("category"))
 
     intent = detect_message_intent(text)
@@ -626,7 +666,16 @@ def extract(text: str, state: dict[str, Any], expecting: str | None = None) -> d
     if mobile and not state.get("mobile"):
         found["mobile"] = mobile
 
-    quantity = extract_quantity(text, category)
+    # An answer about something else must not also become a quantity. "5 kg"
+    # is the pack size when that is the question, not five of them -- and the
+    # guard is deliberately narrow: only when the answer we just matched is
+    # itself the thing carrying the number, so "50 office chairs" still reads
+    # as fifty of them.
+    measured_answer = bool(
+        expecting and expecting in slots and expecting in found
+        and re.search(r"\d", str(found[expecting]))
+    )
+    quantity = None if measured_answer else extract_quantity(text, category)
     if quantity and "quantity" not in found:
         found["quantity"] = quantity
 
@@ -693,6 +742,9 @@ def _extract_for_slot(
             return None
         value = extract_name(text, expecting_name=True)
         return {"name": value} if value else None
+
+    if slot_name == "address":
+        return _read_address(text)
 
     if slot_name == "city":
         city = extract_city(text)

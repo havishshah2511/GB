@@ -22,8 +22,13 @@ PLY = {
 
 
 def buy(chat, session, opening, name, mobile, **over):
-    return answer_all(chat, session, opening, {**PLY, **over, "name": name, "mobile": mobile},
-                      limit=22)
+    answers = {**PLY, **over, "name": name, "mobile": mobile}
+    # Grade is no longer a question -- it is read from what the buyer says --
+    # so volunteer it in the opening line the way a real buyer would.
+    grade = answers.get("grade")
+    if grade and grade.lower() not in opening.lower():
+        opening = f"{opening} {grade}"
+    return answer_all(chat, session, opening, answers, limit=22)
 
 
 # --------------------------------------------------------------------------- #
@@ -57,8 +62,7 @@ def test_a_single_category_is_chosen_for_the_customer(chat, monkeypatch):
 
     reply = start(chat, "solo1")
     assert reply["question"]["slot"] != "category", "asked which product when there is only one"
-    assert reply["question"]["slot"] == "mobile"
-    assert reply["chips"] == [], "no product chips to pick from"
+    assert reply["question"]["slot"] == "thickness", "should open on the first real question"
 
     blurb = " ".join(m.get("text", "") for m in reply["messages"])
     assert "plywood" in blurb.lower(), "should say what it helps with"
@@ -146,12 +150,19 @@ def test_quantity_is_asked_after_the_specification_and_before_the_city(chat):
         reply = chat("ply1", answers.get(question["slot"])
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
-    assert order[:4] == ["mobile", "grade", "thickness", "sheet_size"], order
+    assert order[:2] == ["thickness", "sheet_size"], order
+    assert "grade" not in order, "grade is read from what they say, never asked"
     assert "quantity" in order and "city" in order
     assert order.index("quantity") > order.index("sheet_size"), \
         f"quantity must follow the product detail: {order}"
     assert order.index("quantity") < order.index("city"), \
         f"quantity must come before location: {order}"
+    # The number is asked once the board is settled -- asking a stranger for
+    # it before they have told us anything loses them -- but before quantity
+    # and location, so a returning buyer is recognised early enough to matter.
+    assert order.index("mobile") > order.index("sheet_size"), \
+        f"the number must not come before the product questions: {order}"
+    assert order.index("mobile") < order.index("quantity") < order.index("city"), order
     # The name is the last thing asked about the requirement itself; companion
     # products are offered after it (and may be asked repeatedly, once per
     # pick, until the buyer is done).
@@ -204,6 +215,33 @@ def test_different_specifications_do_not_pool(chat, difference):
     buy(chat, "ply7", "I need plywood", "B", "9812300207", quantity="50", **difference)
     assert len(groups.list_groups()) == 2
     assert groups.consolidate()["groups_merged"] == 0
+
+
+def test_the_grade_is_never_asked_but_still_priced(chat):
+    """The grade names are trade jargon, so the flow does not ask. It is read
+    when volunteered, and defaults when it isn't -- what it must never do is
+    leave the group without a grade, because then there is nothing to price."""
+    reply = answer_all(chat, "plyg1", "I need plywood",
+                       {**PLY, "name": "A", "mobile": "9812300301", "quantity": "120"}, limit=22)
+    assert reply["done"] is True
+
+    group = groups.list_groups(category="PLY")[0]
+    spec = groups.spec_of(group)
+    assert spec["grade"] == "MR", "an unstated grade takes the category default"
+    # 120 sheets of MR 18 mm 8x4: reference 1,650, 101-250 band is 12% off.
+    assert group["current_price"] == 1450
+
+
+def test_a_volunteered_grade_is_read_and_priced(chat):
+    """"marine ply" has to reach the price, or we would quote a commercial
+    board's rate for a waterproof one."""
+    reply = answer_all(chat, "plyg2", "I need marine plywood",
+                       {**PLY, "name": "B", "mobile": "9812300302", "quantity": "120"}, limit=22)
+    assert reply["done"] is True
+
+    group = groups.list_groups(category="PLY")[0]
+    assert groups.spec_of(group)["grade"] == "BWP Marine"
+    assert group["current_price"] == 2330, "priced as marine, not as MR"
 
 
 def test_grade_changes_the_price(chat):

@@ -32,6 +32,11 @@ class Slot:
     unit: str = ""
     # Only ask when this returns True for the current slot bag.
     ask_if: Callable[[dict[str, Any]], bool] | None = None
+    # False keeps the field but never turns it into a question. It is still
+    # recognised when the buyer volunteers it ("marine ply 18mm"), and still
+    # takes the category default when they don't -- so the group stays
+    # priceable. For shortening a flow without losing the field.
+    asked: bool = True
     # Free-text answers are accepted for this slot even if chips are offered.
     freeform: bool = False
     # How long a free-text answer may be. Product names need more room than a
@@ -43,10 +48,19 @@ class Slot:
     def display_label(self) -> str:
         return self.label or self.name.replace("_", " ").title()
 
-    def should_ask(self, state: dict[str, Any]) -> bool:
+    def applies(self, state: dict[str, Any]) -> bool:
+        """Whether this field means anything for this requirement at all.
+
+        A window AC has no inverter setting -- that field is genuinely absent,
+        and must not pick up a default. Different from a field we simply
+        choose not to ask about, which still has a sensible default.
+        """
         if self.ask_if is not None and not self.ask_if(state):
             return False
         return True
+
+    def should_ask(self, state: dict[str, Any]) -> bool:
+        return self.asked and self.applies(state)
 
 
 @dataclass(frozen=True)
@@ -192,9 +206,10 @@ class Category:
                 continue
             slot = by_name.get(name)
             default = self.grouping_defaults.get(name)
-            # A field the flow deliberately skipped (e.g. inverter on a window
-            # AC) stays unset rather than picking up a default.
-            if default and (slot is None or slot.should_ask(resolved)):
+            # A field that does not apply (inverter on a window AC) stays
+            # unset. A field we merely don't ask about still takes its
+            # default, or the group would have no priceable specification.
+            if default and (slot is None or slot.applies(resolved)):
                 resolved[name] = default
             else:
                 resolved.pop(name, None)

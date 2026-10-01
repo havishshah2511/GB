@@ -116,7 +116,8 @@ def test_tv_question_order(chat):
         reply = chat("tv2", {**TV, "name": "Asha", "mobile": "9876540002"}.get(question["slot"])
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
-    assert order[:4] == ["mobile", "screen_size", "display_type", "resolution"], order
+    assert order[:3] == ["screen_size", "display_type", "resolution"], order
+    assert order.index("mobile") < order.index("city"), order
     assert order.index("preferred_brand") < order.index("city")
     assert order[-1] == "name"
 

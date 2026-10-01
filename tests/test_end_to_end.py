@@ -140,17 +140,21 @@ def test_invitee_inherits_the_group_from_the_shared_link(chat):
     assert reply["summary"]["product"] == "1.5 Ton Split Inverter AC"
 
     asked = []
-    for _ in range(10):
+    for _ in range(16):
         question = reply.get("question")
         if not question or reply.get("done"):
             break
         asked.append(question["slot"])
         answers = {"quantity": "3", "name": "Amit", "mobile": "9811160002",
-                   "desired_purchase_date": "Within 15 days", "can_wait": "yes"}
+                   "address": "Bodakdev", "desired_purchase_date": "Within 15 days",
+                   "can_wait": "yes"}
         reply = chat("inv-friend", answers.get(question["slot"])
                      or (question["chips"][0]["value"] if question["chips"] else "skip"))
 
+    # Their own delivery address is still wanted, but the city came with the
+    # link and must not be asked for again -- nor overwritten by the address.
     assert "city" not in asked and "capacity" not in asked
+    assert reply["summary"]["city"] == "Ahmedabad"
     assert reply["summary"]["group_code"] == group_code, "invitee landed in a different group"
     assert groups.get_by_code(group_code)["strong_intent_qty"] == 21
 
