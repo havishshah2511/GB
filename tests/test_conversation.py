@@ -68,8 +68,12 @@ def test_ac_flow_reaches_a_group_and_shows_the_full_result(chat):
     assert reply["done"] is True
     assert reply["summary"]["intent_id"]
     assert reply["summary"]["group_code"]
-    assert cards(reply, "group"), "no group card shown"
-    assert cards(reply, "done"), "no completion card shown"
+    # One card after a request: price, next level, and the two links.
+    receipt = cards(reply, "receipt")
+    assert receipt, "no receipt card shown"
+    assert len(cards(reply)) == 1, "a placed request should be one card, not several"
+    assert "/my/" in receipt[0]["status_url"]
+    assert "/join/" in receipt[0]["url"]
 
     intent = intents.get_full(reply["summary"]["intent_id"])
     assert intent["intent_strength"] == "strong_intent"

@@ -38,7 +38,8 @@ def test_full_group_buying_loop(chat):
     reply = buy(chat, "e2e-c", "I need 2 AC", "Rahul", "9811110003")
     assert reply["done"] is True
 
-    group_card = cards(reply, "group")[0]
+    # One card carries the lot: price now, the next level, and both links.
+    group_card = cards(reply, "receipt")[0]
     assert group_card["group_quantity_text"] == "20 ACs"
     assert group_card["current_price_text"] == "₹37,000"
     assert group_card["reference_price_text"] == "₹40,000"
@@ -46,7 +47,7 @@ def test_full_group_buying_loop(chat):
     assert group_card["your_saving_text"] == "₹6,000"
 
     # --- 3. the next target is shown (section 15) ---------------------------
-    target = cards(reply, "next_target")[0]
+    target = group_card
     assert target["next_target_qty"] == 21
     assert target["gap_text"] == "1 AC"
     assert target["next_price_text"] == "₹35,500"
@@ -54,10 +55,10 @@ def test_full_group_buying_loop(chat):
     assert target["your_next_saving_text"] == "₹3,000"
 
     # --- 4. sharing is offered with a working link (section 16) -------------
-    share = cards(reply, "share")[0]
+    share = group_card
     assert "/join/" in share["url"] and "?ref=" in share["url"]
     assert "wa.me" in share["whatsapp_url"]
-    assert cards(reply, "done"), "customer was not told they can leave"
+    assert "/my/" in group_card["status_url"], "no way back to the order"
 
     # --- 5. a friend follows the link and joins (section 22) ----------------
     referral_code = share["referral_code"]
@@ -103,7 +104,7 @@ def test_full_group_buying_loop(chat):
 def test_referral_attribution_is_recorded_through_the_chatbot(chat):
     seed = buy(chat, "ref-a", "I need 4 AC", "Rahul", "9811120001")
     group_code = seed["summary"]["group_code"]
-    share = cards(seed, "share")
+    share = cards(seed, "receipt")
     code = share[0]["referral_code"] if share else referrals.leaderboard()[0]["referral_code"]
 
     # friend lands on the shared link, then completes the flow
@@ -125,7 +126,7 @@ def test_invitee_inherits_the_group_from_the_shared_link(chat):
     never let the invitee drift into a group of their own."""
     seed = buy(chat, "inv-a", "I need 18 AC", "Rahul", "9811160001")
     group_code = seed["summary"]["group_code"]
-    code = cards(seed, "share")[0]["referral_code"]
+    code = cards(seed, "receipt")[0]["referral_code"]
 
     # The language comes first even here -- the invite itself has to be read.
     landing = chat("inv-friend", "", referral_code=code, group_code=group_code)
@@ -162,7 +163,7 @@ def test_invitee_inherits_the_group_from_the_shared_link(chat):
 def test_invitee_wanting_something_else_is_not_forced_into_the_group(chat):
     seed = buy(chat, "inv2-a", "I need 8 AC", "Rahul", "9811170001")
     group_code = seed["summary"]["group_code"]
-    code = cards(seed, "share")[0]["referral_code"]
+    code = cards(seed, "receipt")[0]["referral_code"]
 
     chat("inv2-friend", "", referral_code=code, group_code=group_code)
     reply = chat("inv2-friend", "Something else")

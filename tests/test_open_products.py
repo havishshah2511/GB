@@ -107,7 +107,7 @@ def test_two_phrasings_of_one_product_pool_together(chat):
     all_groups = groups.list_groups()
     assert len(all_groups) == 1, f"split into {[g['code'] for g in all_groups]}"
     assert all_groups[0]["strong_intent_qty"] == 80
-    assert "80 units" in texts(reply)
+    assert cards(reply, "receipt")[0]["group_quantity_text"] == "80 units"
 
 
 def test_the_group_is_labelled_by_the_canonical_product(chat):
@@ -128,7 +128,7 @@ def test_the_customers_own_unit_is_used(chat):
     intent = intents.get_full(reply["summary"]["intent_id"])
     assert intent["unit"] == "kg"
     assert intent["quantity"] == 100
-    assert "100 kg" in texts(reply)
+    assert cards(reply, "receipt")[0]["your_quantity_text"] == "100 kg"
 
 
 # --------------------------------------------------------------------------- #
@@ -137,16 +137,20 @@ def test_the_customers_own_unit_is_used(chat):
 def test_an_unpriced_group_never_shows_a_price(chat):
     reply = buy(chat, "o8", "I need 50 office chairs", "Ravi", "9000000008")
 
-    card = cards(reply, "group")[0]
+    card = cards(reply, "receipt")[0]
     assert card["has_pricing"] is False
     assert "current_price" not in card and "current_price_text" not in card
     assert card["pricing_status"] == "awaiting_quote"
-    assert "negotiat" in texts(reply) or "supplier quote" in texts(reply)
+    # The card says so plainly rather than implying a number exists.
+    assert "negotiat" in card["note"] or "supplier quote" in card["note"]
+    assert card["price_text"] == "Being negotiated"
 
 
 def test_no_next_target_is_promised_without_slabs(chat):
     reply = buy(chat, "o9", "I need 50 office chairs", "Ravi", "9000000009")
-    assert not cards(reply, "next_target"), "cannot promise a target with no price ladder"
+    card = cards(reply, "receipt")[0]
+    assert not card.get("next_target_qty"), "cannot promise a target with no price ladder"
+    assert "next_price_text" not in card
 
 
 def test_pricing_an_open_group_tells_every_member(chat):

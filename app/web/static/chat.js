@@ -283,6 +283,45 @@
     </div>`);
   }
 
+  // Everything about a placed request in one card: what it costs now, what
+  // the next level would make it, and the two links that matter.
+  function receiptCard(c) {
+    return addCard(`<div class="card receipt">
+      <div class="label">${esc(c.headline)}</div>
+      <h3>${esc(c.title)}</h3>
+
+      <div class="price">
+        <div class="label">${esc(c.price_label)}</div>
+        <div class="big">${esc(c.price_text)}${
+          c.price_unit ? ` <span class="per">${esc(c.price_unit)}</span>` : ""}</div>
+      </div>
+
+      <div class="qty">
+        <span>${esc(c.your_quantity_text)} ${esc(c.yours_label || "yours")}</span>
+        <span>${esc(c.group_quantity_text)} ${esc(c.pooled_label || "pooled")}</span>
+      </div>
+
+      ${c.your_saving_text && c.saving_per_unit_text ? `
+        <div class="saving">${esc(c.saving_label || "Saving")}
+          <strong>${esc(c.saving_per_unit_text)}</strong> ${esc(c.price_unit || "")} —
+          <strong>${esc(c.your_saving_text)}</strong> ${esc(c.in_total_label || "in total")}</div>` : ""}
+
+      ${c.next_price_text ? `
+        <div class="next">
+          <div class="label">${esc(c.next_label)}</div>
+          <div><strong>${esc(c.next_price_text)}</strong> — ${esc(c.next_gap_text)}</div>
+        </div>` : ""}
+
+      ${c.note ? `<p class="indicative">${esc(c.note)}</p>` : ""}
+
+      <div class="acts">
+        <a class="act" href="${esc(c.status_url)}" target="_blank" rel="noopener">${esc(c.status_label)}</a>
+        <a class="act primary" href="https://wa.me/?text=${encodeURIComponent(c.share_message || c.share_url)}"
+           target="_blank" rel="noopener">${esc(c.share_label)}</a>
+      </div>
+    </div>`);
+  }
+
   function slabCard(c) {
     return addCard(`<div class="card">
       <h3>Price levels</h3>
@@ -303,6 +342,7 @@
       case "status": return statusCard(card);
       case "subsidy": return subsidyCard(card);
       case "addons": return addonsCard(card);
+      case "receipt": return receiptCard(card);
       case "slabs": return slabCard(card);
       default: return null;
     }

@@ -143,6 +143,95 @@ def summarise_for_customer(intent: dict[str, Any]) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# duplicates
+# --------------------------------------------------------------------------- #
+def build_spec(state: dict[str, Any], category: catalog.Category) -> dict[str, Any]:
+    """What the requirement is, as stored. Nothing about who or when."""
+    spec = {
+        name: state[name]
+        for name in (s.name for s in category.slots)
+        if state.get(name) not in (None, "", [])
+    }
+    if category.open_ended and (state.get("unit") or "").strip():
+        spec["unit"] = state["unit"].strip()
+    return spec
+
+
+#: Keys that ride along on a spec without describing the product itself.
+_NOT_THE_PRODUCT = ("addons", "for_group", "unit")
+
+
+def _same_value(value: Any) -> str:
+    """One spelling per value, so a yes/no answer compares equal to itself.
+
+    The live flow stores booleans, a caller may hand us "yes": both describe
+    the same requirement, and treating them as different would silently stop
+    offering the merge.
+    """
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    text = str(value).strip().lower()
+    if text in ("true", "yes", "1"):
+        return "yes"
+    if text in ("false", "no", "0"):
+        return "no"
+    return text
+
+
+def _comparable(spec: dict[str, Any]) -> dict[str, str]:
+    """A spec reduced to what makes two requirements the same purchase."""
+    return {
+        key: _same_value(value)
+        for key, value in spec.items()
+        if key not in _NOT_THE_PRODUCT and value not in (None, "", [])
+    }
+
+
+def duplicate_for(customer_id: str | None, state: dict[str, Any]) -> dict[str, Any] | None:
+    """An open request from this customer for exactly the same thing.
+
+    Same product, same specification, same city. Quantity is deliberately not
+    compared -- a second order for more of the identical board is the case
+    worth catching, and it is the quantity that would be added together.
+
+    Without this, someone who comes back for more silently ends up with two
+    requests for the same thing: the back office sees two buyers where there
+    is one, and the customer gets two sets of notifications about one order.
+    """
+    if not customer_id or not state.get("category"):
+        return None
+    category = catalog.get(state["category"])
+    if category is None:
+        return None
+
+    wanted = _comparable(build_spec(state, category))
+    city = (state.get("city") or "").strip().lower()
+    for record in list_by_customer(customer_id, active_only=True):
+        if record["category"] != category.key:
+            continue
+        if (record.get("city") or "").strip().lower() != city:
+            continue
+        if _comparable(loads(record["specifications_json"], {})) == wanted:
+            return record
+    return None
+
+
+def absorb(intent_id: str, quantity: float,
+           addons: list[str] | None = None) -> dict[str, Any]:
+    """Fold a repeat order into the request the customer already has."""
+    record = get(intent_id)
+    if record is None:
+        raise KeyError(f"Unknown intent {intent_id}")
+
+    patch: dict[str, Any] = {"quantity": float(record["quantity"] or 0) + float(quantity or 0)}
+    if addons:
+        spec = loads(record["specifications_json"], {})
+        merged = list(dict.fromkeys(list(spec.get("addons") or []) + list(addons)))
+        patch["specifications"] = {"addons": merged}
+    return update(intent_id, patch)
+
+
+# --------------------------------------------------------------------------- #
 # write
 # --------------------------------------------------------------------------- #
 def create(state: dict[str, Any], conversation_id: str | None = None,
@@ -161,13 +250,7 @@ def create(state: dict[str, Any], conversation_id: str | None = None,
         pincode=state.get("pincode"),
     )
 
-    spec = {
-        name: state[name]
-        for name in (s.name for s in category.slots)
-        if state.get(name) not in (None, "", [])
-    }
-    if category.open_ended and (state.get("unit") or "").strip():
-        spec["unit"] = state["unit"].strip()
+    spec = build_spec(state, category)
     # Companion products ride along on the intent: they are part of this
     # buyer's basket, not part of what defines the group.
     addons = [k for k in (state.get("addons") or []) if category.addon(k)]

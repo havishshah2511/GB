@@ -49,11 +49,16 @@ def test_first_time_buyer_is_not_interrupted(chat):
 
 
 def test_completed_chat_hands_over_a_status_link(chat):
+    """The buyer has no account, so the link back in is the whole handover.
+
+    It used to be a card of its own; it now lives on the single receipt, but
+    it still has to be there -- without it a closed tab is a lost customer.
+    """
     reply = answer_all(chat, "r2", "I need 2 AC", AC_ANSWERS)
-    status = cards(reply, "status")
-    assert status, "no status card at the end of the chat"
-    assert "/my/" in status[0]["url"]
-    assert status[0]["rows"], "status card lists no requests"
+    receipt = cards(reply, "receipt")
+    assert receipt, "no receipt card at the end of the chat"
+    assert "/my/" in receipt[0]["status_url"]
+    assert receipt[0]["status_label"], "the link needs something to click"
 
 
 def test_status_link_is_also_sent_to_the_mobile(chat):

@@ -411,6 +411,32 @@ table.slabs.mine td:last-child { text-align: right; font-weight: 600; }
 }
 .chips button:active { background: var(--brand-soft); }
 
+/* The one card a buyer gets after placing a request. */
+.card.receipt .price { margin: 10px 0 2px; }
+.card.receipt .big {
+  font-size: 26px; font-weight: 700; line-height: 1.15; color: var(--brand);
+}
+.card.receipt .big .per { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
+.card.receipt .qty {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--ink-soft); margin-top: 4px;
+}
+.card.receipt .saving {
+  margin-top: 8px; font-size: 13px; color: var(--ink);
+}
+.card.receipt .next {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px dashed var(--line); font-size: 13.5px;
+}
+.card.receipt .acts { display: flex; gap: 8px; margin-top: 14px; }
+.card.receipt .acts .act {
+  flex: 1; text-align: center; text-decoration: none;
+  padding: 9px 10px; border-radius: 10px;
+  border: 1px solid var(--brand); color: var(--brand);
+  font-size: 13.5px; font-weight: 600;
+}
+.card.receipt .acts .act.primary { background: var(--brand); color: #fff; }
+
 /* Companion products carry an example of what they mean -- "Adhesive" on its
    own tells a buyer nothing, "Fevicol, synthetic resin glue" tells them
    everything. Two lines, so the name still reads first. */

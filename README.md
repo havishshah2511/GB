@@ -177,6 +177,31 @@ pooled, current price, next target, gap, saving so far — and lets them invite
 someone or change their purchase date. There is still no login: the unguessable
 token in the link is the credential, and the page is `noindex`.
 
+### The same requirement, twice
+
+If a returning buyer reaches the end of the flow with a requirement that
+matches an open one of their own — same product, same specification, same city
+— the bot asks before saving it:
+
+> You already have an open request for **100 sheets · 18 mm 8 x 4 ft Plywood**.
+> Shall I add this 50 sheets to it, or keep it as a separate request?
+
+**Add** folds the quantity into the existing intent (and unions the companion
+picks), so there is one request at 150 sheets rather than two. **Separate**
+creates a second intent; both still pool into the same group, so the price is
+identical either way — the difference is what the back office sees.
+
+Quantity is deliberately *not* part of the comparison: someone coming back for
+more of the identical board is exactly the case worth catching, and the
+quantity is the thing being added together. Companion picks are not compared
+either — they are a basket note, not the product being bought.
+
+It keys off the mobile number, so two different people wanting the same board
+are never merged. That is the product working, not a duplicate.
+
+The question is asked **once** per conversation: "keep them separate" is a
+decision, not something to re-litigate every turn.
+
 ### Live merges
 
 While a chat is open the page polls `GET /api/chat/{session}/live` every 15s. If
@@ -823,6 +848,7 @@ tests/test_open_products.py  any-product pooling, unpriced-group honesty
 tests/test_addons.py         offering companion products, declining, the bundle
 tests/test_addon_specs.py    their own questions, their own groups, pooled demand
 tests/test_language.py       English/Hindi, and that language cannot split a group
+tests/test_duplicates.py     the same person asking twice: merge or keep separate
 tests/test_reset.py          data reset guards and behaviour
 tests/test_tv.py             TV routing, specs, panel-technology pricing
 tests/test_solar.py          solar routing, kW capacity, scope-based pricing

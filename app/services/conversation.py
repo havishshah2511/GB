@@ -586,9 +586,9 @@ def _addon_substate(state: dict[str, Any], product: catalog.Category) -> dict[st
     would be insulting. Only what makes this product quotable is asked.
     """
     carried = (
-        "city", "area", "pincode", "name", "mobile", "can_wait", "wait_days",
-        "desired_purchase_date", "maximum_purchase_date", "earliest_purchase_date",
-        "purchase_within_days",
+        "address", "city", "area", "pincode", "name", "mobile", "can_wait",
+        "wait_days", "desired_purchase_date", "maximum_purchase_date",
+        "earliest_purchase_date", "purchase_within_days",
     )
     sub = {k: state[k] for k in carried if state.get(k) not in (None, "", [])}
     sub["category"] = product.key
@@ -678,28 +678,15 @@ def _bank_addon(conversation: dict[str, Any], state: dict[str, Any],
 
     state["_ax_intents"] = list(state.get("_ax_intents") or []) + [intent["id"]]
 
-    lang = lang_of(state)
-    yours = i18n.t(facts["your_quantity_text"], lang)
-    if result["group_created"]:
-        text = i18n.phrase(
-            "Saved 👍 **{yours}** of {product} — you're the first buyer in this one, "
-            "so we'll pool other buyers' orders into it.",
-            lang, yours=yours, product=i18n.t(intent["product"], lang),
-        )
-    else:
-        text = i18n.phrase(
-            "Even better — your **{yours}** joins buyers already asking for the same "
-            "thing. That group is now at **{pooled}**.",
-            lang, yours=yours, pooled=i18n.t(facts["group_quantity_text"], lang),
-        )
-
-    messages: list[dict[str, Any]] = [
-        {"role": "bot", "text": text},
-        {"role": "bot", "card": _group_card(group, qty)},
+    # Same rule as the main order: one card, not a paragraph and a card.
+    customer_id = state.get("_customer_id") or intent["customer_id"]
+    return [
+        {
+            "role": "bot",
+            "card": receipt_card(state, group, customer_id, base_url, qty,
+                                 new_group=result["group_created"]),
+        }
     ]
-    if not facts.get("has_pricing"):
-        messages.append({"role": "bot", "text": facts["pricing_note"]})
-    return messages
 
 
 def _addon_prompt(question: Question, sub: dict[str, Any]) -> str:
@@ -708,6 +695,89 @@ def _addon_prompt(question: Question, sub: dict[str, Any]) -> str:
     if not int(dict(sub.get("_misses", {})).get(bare, 0)):
         return question.text
     return CLARIFIERS.get(bare) or f"Let me put that another way 🙂 {question.text}"
+
+
+# --------------------------------------------------------------------------- #
+# the same requirement, twice
+# --------------------------------------------------------------------------- #
+DUPLICATE_MERGE = "merge"
+DUPLICATE_SEPARATE = "separate"
+
+
+def duplicate_question(state: dict[str, Any]) -> Question | None:
+    """Offer to fold a repeat order into the one they already have.
+
+    Only when everything about the product matches -- same category, same
+    specification, same city. Asked once: saying "keep them separate" must
+    not be re-litigated every time the customer comes back.
+    """
+    if state.get("_duplicate_asked"):
+        return None
+    public = {k: v for k, v in state.items() if not k.startswith("_")}
+    twin = intents.duplicate_for(state.get("_customer_id"), public)
+    if twin is None:
+        return None
+
+    state["_duplicate_asked"] = True
+    state["_duplicate_of"] = twin["id"]
+    lang = lang_of(state)
+    category = catalog.require(twin["category"])
+    existing = category.qty_label(float(twin["quantity"] or 0), twin.get("unit"))
+    adding = category.qty_label(to_float(state.get("quantity"), 0) or 0, state.get("unit"))
+    return Question(
+        slot="_duplicate_choice",
+        text=i18n.phrase(
+            "You already have an open request for **{existing} · {product}**.\n\n"
+            "Shall I add this {adding} to it, or keep it as a separate request?",
+            lang,
+            existing=i18n.t(existing, lang),
+            product=i18n.t(twin.get("product") or category.label, lang),
+            adding=i18n.t(adding, lang),
+        ),
+        chips=[
+            _chip(i18n.t("➕ Add to that request", lang), DUPLICATE_MERGE),
+            _chip(i18n.t("📄 Keep it separate", lang), DUPLICATE_SEPARATE),
+        ],
+    )
+
+
+def merge_into_existing(conversation: dict[str, Any], state: dict[str, Any],
+                        base_url: str) -> list[dict[str, Any]]:
+    """Add this order's quantity to the request the customer already has."""
+    lang = lang_of(state)
+    category = catalog.require(state["category"])
+    added = to_float(state.get("quantity"), 0) or 0.0
+    result = intents.absorb(state["_duplicate_of"], added, _chosen_addons(state))
+
+    intent = result["intent"]
+    group = groups.get(intent["group_id"]) if intent.get("group_id") else None
+    total = float(intent["quantity"] or 0)
+    facts = pricing.price_facts(group, total) if group else {}
+
+    state["_intent_id"] = intent["id"]
+    if group:
+        state["_group_code"] = group["code"]
+        state["_live_snapshot"] = _snapshot(facts)
+
+    messages = [
+        {
+            "role": "bot",
+            "text": i18n.phrase(
+                "Done 👍 Added to your existing request — it is now "
+                "**{total}**, in one order rather than two.",
+                lang, total=i18n.t(category.qty_label(total, intent.get("unit")), lang),
+            ),
+        }
+    ]
+    if group:
+        messages.append(
+            {
+                "role": "bot",
+                "card": receipt_card(state, group, state["_customer_id"], base_url,
+                                     total, new_group=False),
+            }
+        )
+    return messages
 
 
 def contact_question(state: dict[str, Any]) -> Question | None:
@@ -1427,8 +1497,10 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
                 _save(conversation, state, history, STAGE_CONTACT)
                 return _respond(session_id, STAGE_CONTACT, messages, question, state, base_url)
 
+            # The order is already saved and priced; what is left is to record
+            # the picks and ask each one its own questions.
             state["_addons_done"] = True
-            more, question, state = complete(conversation, state, base_url)
+            more, question = companions_done(conversation, state, base_url)
             messages += more
             return _finish_turn(session_id, conversation, state, history, messages,
                                 question, base_url)
@@ -1453,6 +1525,31 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
                     _chip("📋 My requests", "show my requests"),
                 ]
             return payload
+
+    # --- the same requirement, twice ---------------------------------------- #
+    if expecting == "_duplicate_choice":
+        wants_merge = DUPLICATE_SEPARATE not in text.lower() and (
+            DUPLICATE_MERGE in text.lower()
+            or bool(re.search(r"\badd\b|\bmerge\b|\bsame\b|जोड़|मिला", text, re.I))
+            or nlu.rules.extract_bool(text) is True
+        )
+        if wants_merge:
+            messages += merge_into_existing(conversation, state, base_url)
+            # Companion products were already picked; they are requirements of
+            # their own and still need their questions.
+            more, question = _addon_step(conversation, state, base_url)
+            messages += more
+            return _finish_turn(session_id, conversation, state, history, messages,
+                                question, base_url)
+
+        messages.append(
+            {"role": "bot", "text": i18n.t("No problem — I'll keep them separate. 👍",
+                                           lang_of(state))}
+        )
+        more, question, state = complete(conversation, state, base_url)
+        messages += more
+        return _finish_turn(session_id, conversation, state, history, messages,
+                            question, base_url)
 
     # --- specifying a companion product ------------------------------------- #
     # The main order is already banked; these answers build a requirement of
@@ -1660,10 +1757,9 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
         stage = STAGE_CONTACT
         question = contact_question(state)
 
-    # Companion products come last: offer them once we understand the order.
-    if question is None:
-        question = addon_question(state)
-
+    # Companion products are not offered here -- they come after the group
+    # price and the next threshold, so the buyer sees what pooling got them
+    # before being asked to add to it. See complete().
     if question is None:
         # Everything collected -> create the intent and show the group.
         more, question, state = complete(conversation, state, base_url)
@@ -1687,17 +1783,16 @@ def _finish_turn(session_id: str, conversation: dict[str, Any], state: dict[str,
                  question: Question | None, base_url: str) -> dict[str, Any]:
     """Close a turn that either asked a companion question or ended the chat."""
     if question is None:
-        # The sign-off is held back while companion products are still being
-        # specified, so it lands here, once, at the real end.
-        if not state.get("_signed_off"):
-            messages += _closing_messages(state, base_url)
         state["_expecting"] = None
         history += messages
         _save(conversation, state, history, STAGE_DONE)
         return _respond(session_id, STAGE_DONE, messages, None, state, base_url)
 
     state["_expecting"] = question.slot
-    prompt = _addon_prompt(question, state.get("_ax_state") or {})
+    prompt = (
+        _addon_prompt(question, state.get("_ax_state") or {})
+        if question.slot.startswith(ADDON_SLOT_PREFIX) else question.text
+    )
     if prompt:
         messages.append({"role": "bot", "text": prompt})
     history += messages
@@ -1766,7 +1861,7 @@ def _done_chips(state: dict[str, Any]) -> list[dict[str, str]]:
 # completion
 # --------------------------------------------------------------------------- #
 def finalise(conversation: dict[str, Any], state: dict[str, Any],
-             base_url: str = "", closing: bool = True) -> dict[str, Any]:
+             base_url: str = "") -> dict[str, Any]:
     """Create the purchase intent, join a group, and render sections 12-17.
 
     `closing` holds back the sign-off when companion products still have
@@ -1796,141 +1891,153 @@ def finalise(conversation: dict[str, Any], state: dict[str, Any],
     # is another buyer merging in.
     state["_live_snapshot"] = _snapshot(facts)
 
-    messages: list[dict[str, Any]] = []
+    # One message. A buyer who has just answered a dozen questions does not
+    # want six bubbles -- they want the price, how far the next one is, and
+    # the two links that matter. Everything else was noise.
+    messages: list[dict[str, Any]] = [
+        {"role": "bot", "card": receipt_card(state, group, customer["id"], base_url, qty,
+                                             new_group=result["group_created"])}
+    ]
 
-    lang = lang_of(state)
-    yours = i18n.t(facts["your_quantity_text"], lang)
-    if result["group_created"]:
-        opener = i18n.phrase(
-            "You're the first buyer in a new **{group}** group 🚀\n\n"
-            "Your {yours} is now the starting quantity.",
-            lang, group=facts["group_label"], yours=yours,
-        )
-        opener += " " + i18n.t(
-            "As more buyers with matching requirements join, we'll take the pooled "
-            "quantity to suppliers and get you a group price."
-            if not facts.get("has_pricing")
-            else "As more buyers with matching requirements join, the price drops for everyone.",
-            lang,
-        )
-        messages.append({"role": "bot", "text": opener})
-    else:
-        messages.append(
-            {
-                "role": "bot",
-                "text": i18n.phrase(
-                    "Good news 🎉\n\nYour {yours} requirement can be combined with other "
-                    "buyers. There are now approximately **{pooled}** in this buying group.",
-                    lang, yours=yours,
-                    pooled=i18n.t(facts["group_quantity_text"], lang),
-                ),
-            }
-        )
-
-    messages.append({"role": "bot", "card": _group_card(group, qty)})
-
-    # A product nobody has quoted for yet: say so instead of implying a price.
-    if not facts.get("has_pricing"):
-        messages.append({"role": "bot", "text": facts["pricing_note"]})
-
-    # Anything else the category wants to tell them (solar's subsidy estimate).
+    # Anything the category itself must say (solar's subsidy estimate) still
+    # gets its own bubble: it is information, not decoration.
     if category.extra_cards:
         for card in category.extra_cards(state, facts):
             messages.append({"role": "bot", "card": card})
 
-    target_card = _next_target_card(group, qty)
-    if target_card:
-        messages.append(
-            {
-                "role": "bot",
-                "text": i18n.phrase(
-                    "There's another opportunity 👇 We're only **{gap}** away from "
-                    "the next price level.",
-                    lang, gap=i18n.t(facts["gap_text"], lang),
-                ),
-            }
-        )
-        messages.append({"role": "bot", "card": target_card})
-        messages.append(
-            {
-                "role": "bot",
-                "text": i18n.phrase(
-                    "Know someone planning to buy {product}? Invite them to this group. "
-                    "If their requirement joins, the total quantity increases and "
-                    "**your price can also become lower.**",
-                    lang, product=i18n.t(category.label.lower(), lang),
-                ),
-            }
-        )
-        messages.append({"role": "bot", "card": _share_card(group, customer["id"], base_url, qty)})
-
-    # Confirm the basket, without pricing it -- nobody has quoted for these.
-    picked = category.addon_labels(_chosen_addons(state))
-    if picked:
-        pending = bool(state.get("_ax_queue"))
-        note = (
-            i18n.t(
-                "Each of these gets its own buying group too, so we can ask a "
-                "supplier to quote them for the whole pool. A few quick "
-                "questions on each and you're done.",
-                lang,
-            )
-            if pending else
-            i18n.phrase(
-                "We'll ask the supplier to quote these alongside the {product}, so the "
-                "group rate applies to them too. Prices come once the quote is in.",
-                lang, product=i18n.t(category.in_sentence(), lang),
-            )
-        )
-        messages.append(
-            {
-                "role": "bot",
-                "card": {
-                    "type": "addons",
-                    "title": "Also in your request",
-                    "items": picked,
-                    "note": note,
-                },
-            }
-        )
-
-    if closing:
-        messages += _closing_messages(state, base_url)
+    # The status link goes to their phone whether or not they read the card.
+    _send_status_link(customer["id"], base_url)
+    state["_signed_off"] = True
 
     return {"messages": messages, "state": state, "intent": intent, "group": group}
 
 
-def _closing_messages(state: dict[str, Any], base_url: str) -> list[dict[str, Any]]:
-    """The sign-off: what happens next, and the link back in.
+def receipt_card(state: dict[str, Any], group: dict[str, Any], customer_id: str,
+                 base_url: str, qty: float, new_group: bool) -> dict[str, Any]:
+    """Everything a buyer needs after placing a request, in one card.
 
-    The buyer has no account, so the status link is how they return.
+    What it is, what it costs now, what the next threshold would make it, and
+    the two links that matter: see the order, and bring someone else in.
+    Every number comes from the pricing engine; this only arranges them.
     """
-    state["_signed_off"] = True
-    messages: list[dict[str, Any]] = [{"role": "bot", "card": _done_card(state)}]
-    customer_id = state.get("_customer_id")
-    if customer_id:
-        records = intents.list_by_customer(customer_id, active_only=True)
-        messages.append({"role": "bot", "card": _status_card(customer_id, base_url, records)})
-        _send_status_link(customer_id, base_url)
-    return messages
+    from . import customers
+
+    lang = lang_of(state)
+    facts = pricing.price_facts(group, qty)
+    referral = referrals.ensure(customer_id, group["id"])
+    kit = referrals.share_kit(group, facts, referral["referral_code"], base_url)
+
+    # The whole fact sheet rides along -- savings, reference price, the next
+    # target's figures. The card renders the few that matter; the rest stay
+    # available to the page and to anything reading the API, so collapsing
+    # six bubbles into one loses presentation, never information.
+    card: dict[str, Any] = {
+        **facts,
+        **kit,
+        "type": "receipt",
+        "title": facts["group_label"],
+        "headline": i18n.t(
+            "You're the first buyer in this group 🚀" if new_group
+            else "Your requirement is pooled with other buyers 🎉",
+            lang,
+        ),
+        "your_quantity_text": i18n.t(facts["your_quantity_text"], lang),
+        "group_quantity_text": i18n.t(facts["group_quantity_text"], lang),
+        "has_pricing": facts["has_pricing"],
+        "status_url": customers.status_url(customer_id, base_url),
+        "status_label": i18n.t("See your order", lang),
+        "share_url": kit["url"],
+        "share_message": kit["message"],
+        "share_label": i18n.t("Share with others", lang),
+        "yours_label": i18n.t("yours", lang),
+        "saving_label": i18n.t("Saving", lang),
+        "in_total_label": i18n.t("in total", lang),
+        "pooled_label": i18n.t("pooled", lang),
+        "unit": facts["unit"],
+    }
+
+    if facts["has_pricing"]:
+        card["price_label"] = i18n.t("Group price now", lang)
+        card["price_text"] = facts["current_price_text"]
+        card["price_unit"] = i18n.phrase("per {unit}", lang,
+                                         unit=i18n.t(facts["unit"], lang))
+    else:
+        # Nobody has quoted yet. Say so rather than imply a number exists.
+        card["price_label"] = i18n.t("Price", lang)
+        card["price_text"] = i18n.t("Being negotiated", lang)
+        card["note"] = facts["pricing_note"]
+
+    if facts.get("next_target_qty"):
+        card["next_label"] = i18n.t("Next price level", lang)
+        card["next_price_text"] = facts["next_price_text"]
+        card["next_gap_text"] = i18n.phrase(
+            "{gap} more to get there", lang, gap=i18n.t(facts["gap_text"], lang),
+        )
+    return card
+
+
+def _addons_card(state: dict[str, Any], category: catalog.Category) -> dict[str, Any]:
+    """Confirm the basket, without pricing it -- nobody has quoted for these."""
+    lang = lang_of(state)
+    pending = bool(state.get("_ax_queue"))
+    note = (
+        i18n.t(
+            "Each of these gets its own buying group too, so we can ask a "
+            "supplier to quote them for the whole pool. A few quick "
+            "questions on each and you're done.",
+            lang,
+        )
+        if pending else
+        i18n.phrase(
+            "We'll ask the supplier to quote these alongside the {product}, so the "
+            "group rate applies to them too. Prices come once the quote is in.",
+            lang, product=i18n.t(category.in_sentence(), lang),
+        )
+    )
+    return {
+        "type": "addons",
+        "title": "Also in your request",
+        "items": category.addon_labels(_chosen_addons(state)),
+        "note": note,
+    }
 
 
 def complete(conversation: dict[str, Any], state: dict[str, Any],
              base_url: str) -> tuple[list[dict[str, Any]], Question | None, dict[str, Any]]:
-    """Bank the requirement, then ask each companion product's own questions.
+    """Bank the requirement, show the price, then offer the companions.
 
-    The main order is saved first and on its own: whatever happens next, the
-    thing they came for is recorded. Only then do we ask what kind of nails.
+    The offer lands *after* the group price and the next threshold, so it
+    reads as "here is what pooling just got you, and here is more of it"
+    rather than one more question between them and their answer.
     """
-    _queue_addons(state)
-    pending = bool(state.get("_ax_queue"))
-    result = finalise(conversation, state, base_url, closing=not pending)
+    # A repeat order for exactly the same thing is worth asking about once.
+    twin = duplicate_question(state)
+    if twin is not None:
+        return [], twin, state
+
+    offer = addon_question(state)
+    result = finalise(conversation, state, base_url)
     messages = list(result["messages"])
     state = result["state"]
+    return messages, offer, state
+
+
+def companions_done(conversation: dict[str, Any], state: dict[str, Any],
+                    base_url: str) -> tuple[list[dict[str, Any]], Question | None]:
+    """The buyer has finished picking: record them, then specify each one."""
+    messages: list[dict[str, Any]] = []
+    picked = _chosen_addons(state)
+    _queue_addons(state)
+
+    if picked:
+        category = catalog.require(state["category"])
+        # The intent was created before the offer, so the picks are added now.
+        if state.get("_intent_id"):
+            intents.update(state["_intent_id"], {"specifications": {"addons": picked}})
+        messages.append({"role": "bot", "card": _addons_card(state, category)})
 
     more, question = _addon_step(conversation, state, base_url)
-    messages += more
-    return messages, question, state
+    return messages + more, question
 
 
 def _done_card(state: dict[str, Any]) -> dict[str, Any]:

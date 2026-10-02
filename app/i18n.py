@@ -80,6 +80,35 @@ HINDI: dict[str, str] = {
         "या लिख दीजिए, जैसे “100 शीट प्लाईवुड”",
     "Or just type it, e.g. “5 kg nails”": "या लिख दीजिए, जैसे “5 किलो कील”",
     "Anything else I can help you pool up?": "और कुछ जिसमें मैं मदद कर सकूँ?",
+    "You already have an open request for **{existing} · {product}**.\n\n"
+    "Shall I add this {adding} to it, or keep it as a separate request?":
+        "आपकी पहले से एक खुली रिक्वेस्ट है — **{existing} · {product}**।\n\n"
+        "क्या इन {adding} को उसी में जोड़ दूँ, या अलग रिक्वेस्ट रखूँ?",
+    # -- the one card a buyer gets after placing a request ------------------ #
+    "You're the first buyer in this group 🚀": "आप इस ग्रुप के पहले खरीदार हैं 🚀",
+    "Your requirement is pooled with other buyers 🎉":
+        "आपकी ज़रूरत दूसरे खरीदारों के साथ जुड़ गई है 🎉",
+    "Group price now": "अभी ग्रुप की कीमत",
+    "per {unit}": "प्रति {unit}",
+    "Price": "कीमत",
+    "Being negotiated": "बातचीत चल रही है",
+    "Next price level": "अगली कीमत",
+    "{gap} more to get there": "{gap} और चाहिए",
+    "See your order": "अपना ऑर्डर देखें",
+    "Share with others": "दूसरों के साथ साझा करें",
+    "yours": "आपके",
+    "Saving": "बचत",
+    "in total": "कुल मिलाकर",
+    "pooled": "कुल",
+
+    "➕ Add to that request": "➕ उसी में जोड़ दें",
+    "📄 Keep it separate": "📄 अलग रखें",
+    "Done 👍 Added to your existing request — it is now **{total}**, in one "
+    "order rather than two.":
+        "हो गया 👍 आपकी पुरानी रिक्वेस्ट में जोड़ दिया — अब यह **{total}** है, "
+        "दो की जगह एक ही ऑर्डर में।",
+    "No problem — I'll keep them separate. 👍":
+        "कोई बात नहीं — मैं इन्हें अलग रखूँगा। 👍",
     "Want to set up something new?": "कुछ नया शुरू करें?",
     "What would you like to buy instead?": "इसकी जगह क्या खरीदना चाहेंगे?",
     "When are you planning to purchase?": "आप कब तक खरीदना चाहते हैं?",

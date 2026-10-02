@@ -73,6 +73,11 @@ def buy_plywood_with(chat, session, name, mobile, picks, answers=None):
     return answer_companions(chat, session, reply, answers)
 
 
+def cards(reply, kind=None):
+    found = [m["card"] for m in reply["messages"] if m.get("card")]
+    return [c for c in found if kind is None or c["type"] == kind]
+
+
 def spec_of(intent_id):
     return loads(intents.get(intent_id)["specifications_json"], {})
 
@@ -249,16 +254,19 @@ def test_the_main_order_is_banked_before_the_questions_start(chat):
     assert intents.get(reply["summary"]["intent_id"])["status"] == "active"
 
 
-def test_the_sign_off_waits_until_everything_is_captured(chat):
-    """"You're done" belongs at the end, not in the middle."""
+def test_each_request_is_confirmed_with_one_card(chat):
+    """The companion product gets the same single receipt the board got --
+    price, next level, and the links -- not a paragraph and three cards."""
     drive_to_addons(chat, "s11", "Havish", "9812360013")
     chat("s11", "addon:nails")
     mid = chat("s11", DONE)
-    assert not [m for m in mid["messages"] if m.get("card", {}).get("type") == "done"]
+    assert not cards(mid, "receipt"), "the nails have not been specified yet"
 
     end, _ = answer_companions(chat, "s11", mid)
-    assert [m for m in end["messages"] if m.get("card", {}).get("type") == "done"]
     assert end["done"] is True
+    receipts = cards(end, "receipt")
+    assert len(receipts) == 1, "one card for the nails, not several"
+    assert "/my/" in receipts[0]["status_url"]
 
 
 def test_cancelling_takes_the_companion_requirement_with_it(chat):
