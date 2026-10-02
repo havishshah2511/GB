@@ -67,6 +67,7 @@ HINDI: dict[str, str] = {
     "10-digit mobile number": "10 अंकों का मोबाइल नंबर",
     "Hello 👋\n\nWhat are you looking for?": "नमस्ते 👋\n\nआपको क्या चाहिए?",
     "What's your address?": "आपका पता क्या है?",
+    "Where should we deliver your order?": "आपका ऑर्डर कहाँ डिलीवर करें?",
     "e.g. Satellite, Ahmedabad": "जैसे सैटेलाइट, अहमदाबाद",
     "Which city is that in?": "यह किस शहर में है?",
     "Just the area and city is enough 🙂 Where should we deliver?":
@@ -200,6 +201,12 @@ HINDI: dict[str, str] = {
         "ऑर्डर में चाहिए होती हैं। अभी जोड़ने का कोई पैसा नहीं लगता — हम सप्लायर से "
         "बोर्ड के साथ इनका भी रेट पूछेंगे, ताकि ग्रुप को इन पर भी बेहतर कीमत मिले।",
     "No thanks": "नहीं, धन्यवाद",
+    "For the {product} — same name, number and delivery address as your "
+    "{main} order?":
+        "{product} के लिए — नाम, नंबर और डिलीवरी पता वही रहेगा जो आपके {main} "
+        "ऑर्डर में है?",
+    "✅ Yes, same details": "✅ हाँ, वही",
+    "✏️ No, different": "✏️ नहीं, अलग",
     "✅ That's everything": "✅ बस इतना ही",
     "Anything else you need with it? We'll ask the supplier to quote these "
     "alongside your order.":

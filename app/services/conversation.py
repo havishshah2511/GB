@@ -417,7 +417,7 @@ def next_question(state: dict[str, Any]) -> Question | None:
         candidates.append(
             (46, Question(
                 slot="address",
-                text=i18n.t("What's your address?", lang_of(state)),
+                text=i18n.t("Where should we deliver your order?", lang_of(state)),
                 placeholder="e.g. Satellite, Ahmedabad"))
         )
     elif not _slot_filled(state, "city"):
@@ -464,8 +464,10 @@ def addon_question(state: dict[str, Any]) -> Question | None:
     """Offer the companion products this category usually sells alongside.
 
     Asked once the requirement is understood, so it reads as a helpful nudge
-    rather than an upsell before we have even listened. Multi-select: each tap
-    adds one and the remaining options come back, until they say they're done.
+    rather than an upsell before we have even listened. One pick: tapping a
+    product goes straight into its own questions rather than coming back to
+    ask whether they want anything else, which made the offer feel like a
+    checkout queue.
     """
     category = catalog.get(state.get("category"))
     if category is None or not category.addons or state.get("_addons_done"):
@@ -488,18 +490,12 @@ def addon_question(state: dict[str, Any]) -> Question | None:
         }
         for a in remaining
     ]
-    if chosen:
-        chips.append(_chip("✅ That's everything", ADDON_DONE))
-        picked = ", ".join(i18n.t(l, lang) for l in category.addon_labels(chosen))
-        text = i18n.phrase(
-            "Added **{picked}** 👍\n\nAnything else with it?", lang, picked=picked
-        )
-    else:
-        chips.append(_chip("No thanks", ADDON_DONE))
-        text = category.addon_prompt or (
-            "Anything else you need with it? We'll ask the supplier to quote "
-            "these alongside your order."
-        )
+    chips.append(_chip("No thanks", ADDON_DONE))
+    text = i18n.t(category.addon_prompt, lang) or i18n.t(
+        "Anything else you need with it? We'll ask the supplier to quote "
+        "these alongside your order.",
+        lang,
+    )
     return Question(slot="_addons", text=text, chips=chips, optional=True)
 
 
@@ -579,17 +575,54 @@ def _queue_addons(state: dict[str, Any]) -> None:
     ]
 
 
+SAME_DETAILS = "same"
+OTHER_DETAILS = "different"
+
+
+def same_details_question(state: dict[str, Any],
+                          product: catalog.Category) -> Question | None:
+    """Confirm the contact and delivery details carry over, rather than
+    silently reusing them or asking for them all again.
+
+    Companion products are usually the same delivery, so the default is one
+    tap. A buyer sending the nails to a different site says so here and is
+    asked properly.
+    """
+    if state.get("_ax_same") is not None:
+        return None
+    main = catalog.get(state.get("category"))
+    lang = lang_of(state)
+    return Question(
+        slot="_ax_same",
+        text=i18n.phrase(
+            "For the {product} — same name, number and delivery address as "
+            "your {main} order?",
+            lang,
+            product=i18n.t(product.in_sentence(), lang),
+            main=i18n.t(main.in_sentence() if main else "", lang),
+        ),
+        chips=[
+            _chip(i18n.t("✅ Yes, same details", lang), SAME_DETAILS),
+            _chip(i18n.t("✏️ No, different", lang), OTHER_DETAILS),
+        ],
+    )
+
+
 def _addon_substate(state: dict[str, Any], product: catalog.Category) -> dict[str, Any]:
     """Start the companion flow from what the buyer has already told us.
 
     Same person, same city, same deadline -- asking any of it a second time
     would be insulting. Only what makes this product quotable is asked.
     """
-    carried = (
-        "address", "city", "area", "pincode", "name", "mobile", "can_wait",
-        "wait_days", "desired_purchase_date", "maximum_purchase_date",
+    carried = [
+        "can_wait", "wait_days", "desired_purchase_date", "maximum_purchase_date",
         "earliest_purchase_date", "purchase_within_days",
-    )
+    ]
+    # Who they are and where it goes carry over only if they said so. Saying
+    # "different" means this delivery is somewhere else, so those are asked
+    # again rather than quietly inherited.
+    if state.get("_ax_same") is not False:
+        carried += ["address", "city", "area", "pincode", "name", "mobile"]
     sub = {k: state[k] for k in carried if state.get(k) not in (None, "", [])}
     sub["category"] = product.key
     # The sub-flow renders its own acknowledgements, so it needs the language
@@ -639,7 +672,9 @@ def _addon_step(conversation: dict[str, Any], state: dict[str, Any],
             state["_ax_state"] = sub
             messages.append({"role": "bot", "text": _addon_opener(product, lang_of(state))})
 
-        question = next_question(sub)
+        # contact_question supplies the name, which next_question leaves to
+        # the main flow -- needed when the buyer said the details differ.
+        question = next_question(sub) or contact_question(sub)
         if question is not None:
             _mark_optional_asked(sub, question)
             return messages, _as_addon_question(question)
@@ -1487,18 +1522,8 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
     if expecting == "_addons":
         answer = read_addon_answer(state, text)
         if answer is not None:
-            if answer == "done":
-                state["_addons_done"] = True
-            question = addon_question(state)
-            if question is not None:
-                state["_expecting"] = question.slot
-                messages.append({"role": "bot", "text": question.text})
-                history += messages
-                _save(conversation, state, history, STAGE_CONTACT)
-                return _respond(session_id, STAGE_CONTACT, messages, question, state, base_url)
-
-            # The order is already saved and priced; what is left is to record
-            # the picks and ask each one its own questions.
+            # One pick is the whole answer: go straight into that product's
+            # questions rather than coming back to ask for another.
             state["_addons_done"] = True
             more, question = companions_done(conversation, state, base_url)
             messages += more
@@ -1547,6 +1572,19 @@ def handle(session_id: str, text: str = "", referral_code: str | None = None,
                                            lang_of(state))}
         )
         more, question, state = complete(conversation, state, base_url)
+        messages += more
+        return _finish_turn(session_id, conversation, state, history, messages,
+                            question, base_url)
+
+    # --- same details for the companion product, or different? -------------- #
+    if expecting == "_ax_same":
+        lowered = text.strip().lower()
+        state["_ax_same"] = not (
+            OTHER_DETAILS in lowered
+            or bool(re.search(r"\bdifferent\b|\bother\b|\bchange\b|अलग|दूसर", text, re.I))
+            or nlu.rules.extract_bool(text) is False
+        )
+        more, question = _addon_step(conversation, state, base_url)
         messages += more
         return _finish_turn(session_id, conversation, state, history, messages,
                             question, base_url)
@@ -2035,6 +2073,13 @@ def companions_done(conversation: dict[str, Any], state: dict[str, Any],
         if state.get("_intent_id"):
             intents.update(state["_intent_id"], {"specifications": {"addons": picked}})
         messages.append({"role": "bot", "card": _addons_card(state, category)})
+
+    queued = list(state.get("_ax_queue") or [])
+    if queued:
+        product = _addon_product(catalog.get(state.get("category")), queued[0])
+        confirm = same_details_question(state, product) if product else None
+        if confirm is not None:
+            return messages, confirm
 
     more, question = _addon_step(conversation, state, base_url)
     return messages + more, question

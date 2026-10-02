@@ -91,40 +91,34 @@ def test_the_offer_comes_last_not_first(chat):
         assert earlier in order and order.index(earlier) < order.index("_addons")
 
 
-def test_picking_several_accumulates(chat):
+def test_one_pick_goes_straight_into_its_questions(chat):
+    """The offer is not a shopping basket. Tapping a product starts that
+    product's questions rather than coming back to ask for another, which
+    made the end of the chat feel like a checkout queue."""
     drive_to_addons(chat, "a3", "Havish", "9812340003")
     reply = chat("a3", "addon:adhesive")
-    assert "Adhesive" in " ".join(m.get("text", "") for m in reply["messages"])
 
-    reply = chat("a3", "addon:nails")
-    blurb = " ".join(m.get("text", "") for m in reply["messages"])
-    assert "Adhesive" in blurb and "Nails" in blurb
-
-    # A chosen item is not offered again.
+    assert reply["question"]["slot"] != "_addons", "asked for another product"
     labels = [c["label"] for c in reply["chips"]]
-    assert not any("Adhesive" in l for l in labels)
-    assert any("everything" in l.lower() for l in labels)
+    assert not any("Nails" in l for l in labels), labels
 
 
-def test_choices_are_saved_on_the_intent(chat):
+def test_the_choice_is_saved_on_the_intent(chat):
     drive_to_addons(chat, "a4", "Havish", "9812340004")
-    chat("a4", "addon:adhesive")
-    chat("a4", "addon:nails")
-    reply = chat("a4", DONE)
+    reply = chat("a4", "addon:adhesive")
 
-    # The main order is banked as soon as the picks are in; each pick then gets
-    # its own questions (tests/test_addon_specs.py).
-    assert spec_of(reply["summary"]["intent_id"])["addons"] == ["adhesive", "nails"]
+    # The main order is banked before the offer; the pick is added to it, and
+    # then gets its own questions (tests/test_addon_specs.py).
+    assert spec_of(reply["summary"]["intent_id"])["addons"] == ["adhesive"]
 
     listed = cards(reply, "addons")
-    assert listed and listed[0]["items"] == ["Adhesive", "Nails & pins"]
+    assert listed and listed[0]["items"] == ["Adhesive"]
 
 
 def test_the_confirmation_promises_no_price(chat):
     """Nobody has quoted for these, so no number may appear."""
     drive_to_addons(chat, "a5", "Havish", "9812340005")
-    chat("a5", "addon:adhesive")
-    reply = chat("a5", DONE)
+    reply = chat("a5", "addon:adhesive")
 
     card = cards(reply, "addons")[0]
     assert "₹" not in card["note"]
@@ -133,15 +127,14 @@ def test_the_confirmation_promises_no_price(chat):
 
 @pytest.mark.parametrize("typed,expected", [
     ("fevicol", ["adhesive"]),
-    ("glue and nails", ["adhesive", "nails"]),
+    ("glue and nails", ["adhesive", "nails"]),   # typed text can still name two
     ("sunmica", ["laminate"]),
     ("kabza", ["hardware"]),
 ])
 def test_typed_answers_are_understood(chat, typed, expected):
     session = f"a6-{typed[:4]}"
     drive_to_addons(chat, session, "Havish", f"981234{abs(hash(typed)) % 10000:04d}")
-    chat(session, typed)
-    reply = chat(session, DONE)
+    reply = chat(session, typed)
     assert spec_of(reply["summary"]["intent_id"])["addons"] == expected
 
 
@@ -181,25 +174,21 @@ def test_cancelling_still_works_at_this_step(chat):
 # what it is for: the bundle an operator negotiates
 # --------------------------------------------------------------------------- #
 def test_the_back_office_sees_pooled_addon_demand(chat):
-    for n, picks in enumerate([("adhesive", "nails"), ("adhesive",), ("adhesive", "screws")]):
+    for n, pick in enumerate(["adhesive", "adhesive", "screws"]):
         session = f"b{n}"
         drive_to_addons(chat, session, f"Buyer{n}", f"981235000{n}")
-        for key in picks:
-            chat(session, f"addon:{key}")
-        chat(session, DONE)
+        chat(session, f"addon:{pick}")
 
     group = groups.list_groups(category="PLY")[0]
     demand = {row["label"]: row["buyers"] for row in groups.addon_demand(group["id"])}
-    assert demand["Adhesive"] == 3, demand
-    assert demand["Nails & pins"] == 1
+    assert demand["Adhesive"] == 2, demand
     assert demand["Screws"] == 1
     assert "Hinges & fittings" not in demand, "nothing nobody asked for"
 
 
 def test_addon_demand_is_buyer_counts_not_invented_quantities(chat):
     drive_to_addons(chat, "b9", "Havish", "9812350009")
-    chat("b9", "addon:adhesive")
-    chat("b9", DONE)          # the adhesive questions are asked, not answered
+    chat("b9", "addon:adhesive")   # the adhesive questions are asked, not answered
 
     row = groups.addon_demand(groups.list_groups(category="PLY")[0]["id"])[0]
     assert row["buyers"] == 1

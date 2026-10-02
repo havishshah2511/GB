@@ -46,8 +46,12 @@ def drive_to_addons(chat, session, name, mobile, **over):
     raise AssertionError("never reached the companion-product step")
 
 
-def answer_companions(chat, session, reply, answers=None, limit=24):
-    """Answer every `_ax:` question, recording the slots asked."""
+def answer_companions(chat, session, reply, answers=None, limit=24, same="same"):
+    """Answer every companion question, recording the slots asked.
+
+    `same` answers the one-tap confirmation that the name, number and
+    delivery address carry over from the main order.
+    """
     answers = answers or {}
     asked = []
     for _ in range(limit):
@@ -55,6 +59,9 @@ def answer_companions(chat, session, reply, answers=None, limit=24):
         if not question or reply.get("done"):
             break
         slot = question["slot"]
+        if slot == "_ax_same":
+            reply = chat(session, same)
+            continue
         assert slot.startswith("_ax:"), f"unexpected question {slot}"
         asked.append(slot[len("_ax:"):])
         value = answers.get(asked[-1])
@@ -64,13 +71,15 @@ def answer_companions(chat, session, reply, answers=None, limit=24):
     return reply, asked
 
 
-def buy_plywood_with(chat, session, name, mobile, picks, answers=None):
-    """The whole journey: plywood, then each companion product specified."""
+def buy_plywood_with(chat, session, name, mobile, picks, answers=None, same="same"):
+    """The whole journey: plywood, then the companion product specified.
+
+    One companion per order now -- tapping one goes straight into its
+    questions rather than back to the menu -- so `picks` takes the first.
+    """
     drive_to_addons(chat, session, name, mobile)
-    for key in picks:
-        chat(session, f"addon:{key}")
-    reply = chat(session, DONE)
-    return answer_companions(chat, session, reply, answers)
+    reply = chat(session, f"addon:{list(picks)[0]}" if picks else DONE)
+    return answer_companions(chat, session, reply, answers, same=same)
 
 
 def cards(reply, kind=None):
@@ -150,11 +159,24 @@ def test_what_we_already_know_is_not_asked_again(chat):
         assert known not in asked, f"re-asked {known}: {asked}"
 
 
-def test_each_pick_gets_its_own_questions(chat):
-    _, asked = buy_plywood_with(chat, "s4", "Havish", "9812360004",
-                                ["adhesive", "nails"])
+def test_the_pick_gets_its_own_questions(chat):
+    _, asked = buy_plywood_with(chat, "s4", "Havish", "9812360004", ["adhesive"])
     assert {"adhesive_type", "pack_size"} <= set(asked), asked
-    assert {"nail_size", "nail_type"} <= set(asked), asked
+    assert "nail_size" not in asked, "only the product they picked"
+
+
+def test_the_contact_details_are_confirmed_not_re_asked(chat):
+    """One tap instead of three questions -- and if they say the delivery is
+    somewhere else, they are asked properly rather than silently inheriting
+    an address that would send the goods to the wrong site."""
+    _, asked = buy_plywood_with(chat, "s4b", "Havish", "9812360014", ["nails"])
+    for carried in ("mobile", "name", "address"):
+        assert carried not in asked, f"re-asked {carried}: {asked}"
+
+    _, asked = buy_plywood_with(chat, "s4c", "Havish", "9812360015", ["nails"],
+                                same="different")
+    for wanted in ("mobile", "name", "address"):
+        assert wanted in asked, f"never asked {wanted}: {asked}"
 
 
 @pytest.mark.parametrize("text,slot,value", [
